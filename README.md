@@ -3,6 +3,9 @@
 > An MCP server that exposes vehicle-diagnostic and CAN-bus domain logic as agent tools,
 > with a LangGraph orchestration layer and a human-in-the-loop eval harness.
 
+**▶ [Live showcase](https://kruslim.github.io/canopy/)** — replay real recorded traces: a cited
+answer and a grounded refusal, with the honest eval numbers. No install, no API key.
+
 **Status: Phase 4 (evals & human-in-the-loop) complete.** A LangGraph agent answers
 natural-language diagnostics questions with validated, cited structured output — or refuses,
 grounded, when the connected source can't answer. Every consequential output can pass through

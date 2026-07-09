@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Canopy — a source-agnostic diagnostic agent, with grounded refusal</title>
+<meta name="description" content="An MCP server exposing vehicle-diagnostic / CAN-bus domain logic as agent tools, with a LangGraph orchestration layer and a calibrated human-in-the-loop eval harness. Replay real recorded traces: cited answers and grounded refusals." />
+<style>
+  :root{
+    --bg:#f6f8f7; --panel:#ffffff; --ink:#12211b; --muted:#5c6b64;
+    --line:#e2e8e4; --ink-hero:#e8f1ec; --hero:#0c1a14; --hero2:#12281e;
+    --green:#1f8a5b; --green-soft:#e6f4ec; --amber:#b7791f; --amber-soft:#fbf1dd;
+    --red:#c0392b; --red-soft:#fbe9e7; --blue:#2b6cb0; --blue-soft:#e8f0f9;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.55;-webkit-font-smoothing:antialiased}
+  a{color:var(--green);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:1000px;margin:0 auto;padding:0 20px}
+  code,.mono{font-family:var(--mono)}
+
+  /* hero */
+  .hero{background:linear-gradient(160deg,var(--hero),var(--hero2));color:var(--ink-hero);padding:64px 0 52px}
+  .hero .wrap{max-width:900px}
+  .eyebrow{font-family:var(--mono);font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:#7fd1a6;margin:0 0 14px}
+  h1{font-size:44px;line-height:1.08;margin:0 0 16px;letter-spacing:-.02em}
+  .lede{font-size:19px;color:#c8d8d0;max-width:680px;margin:0 0 26px}
+  .cta{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+  .btn{display:inline-block;padding:11px 18px;border-radius:9px;font-weight:600;font-size:15px}
+  .btn.primary{background:#2fbd7e;color:#08160f}
+  .btn.primary:hover{background:#43cd8e;text-decoration:none}
+  .btn.ghost{border:1px solid #35513f;color:var(--ink-hero)}
+  .btn.ghost:hover{border-color:#5a8a6c;text-decoration:none}
+
+  .stats{display:flex;gap:14px;flex-wrap:wrap;margin-top:34px}
+  .stat{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);border-radius:11px;padding:14px 18px;min-width:150px}
+  .stat b{display:block;font-size:26px;color:#fff;font-family:var(--mono);letter-spacing:-.01em}
+  .stat span{font-size:12.5px;color:#9fb4aa}
+
+  section{padding:52px 0}
+  section:nth-child(even){background:var(--panel);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+  h2{font-size:27px;margin:0 0 6px;letter-spacing:-.01em}
+  .sub{color:var(--muted);margin:0 0 26px;max-width:660px}
+
+  /* architecture stack */
+  .stack{display:flex;flex-direction:column;gap:7px;font-family:var(--mono);font-size:14px}
+  .layer{display:flex;justify-content:space-between;align-items:center;gap:12px;background:var(--green-soft);border:1px solid #c9e6d5;border-radius:8px;padding:12px 15px}
+  .layer.below{background:#eef1f5;border-color:#dbe1e8}
+  .layer .tag{font-size:11.5px;color:var(--muted);white-space:nowrap}
+  .seam{display:flex;align-items:center;gap:12px;margin:4px 0;color:var(--green);font-weight:700;font-size:12.5px;letter-spacing:.12em}
+  .seam::before,.seam::after{content:"";height:2px;background:linear-gradient(90deg,transparent,var(--green),transparent);flex:1}
+  .note{margin-top:16px;font-size:14.5px;color:var(--muted)}
+
+  /* calibration */
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+  @media(max-width:720px){.grid2{grid-template-columns:1fr}}
+  .card{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:20px}
+  section:nth-child(even) .card{background:#fbfdfc}
+  .bignum{font-family:var(--mono);font-size:40px;font-weight:700;color:var(--green);letter-spacing:-.02em}
+  .bignum small{font-size:15px;color:var(--muted);font-weight:400;margin-left:4px}
+  .etable{width:100%;border-collapse:collapse;font-size:13.5px;margin-top:6px}
+  .etable td{padding:6px 8px;border-bottom:1px solid var(--line)}
+  .etable td:first-child{font-family:var(--mono);font-size:12.5px}
+  .etable td:last-child{text-align:right;font-family:var(--mono);font-weight:600}
+  .bar{height:7px;border-radius:4px;background:var(--line);overflow:hidden;margin-top:3px}
+  .bar>i{display:block;height:100%;background:var(--green)}
+  .caveat{background:var(--amber-soft);border:1px solid #eddcb6;border-radius:10px;padding:14px 16px;font-size:14px;color:#6b5418;margin-top:18px}
+
+  /* viewer */
+  .chips{display:flex;gap:9px;flex-wrap:wrap;margin-bottom:20px}
+  .chip{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:8px 14px;font-size:13.5px;cursor:pointer;display:flex;align-items:center;gap:8px;transition:.12s}
+  .chip:hover{border-color:var(--green)}
+  .chip[aria-selected="true"]{border-color:var(--green);background:var(--green-soft);font-weight:600}
+  .dot{width:8px;height:8px;border-radius:50%}
+  .dot.answer{background:var(--green)} .dot.refusal{background:var(--amber)}
+
+  .viewer{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .vq{padding:18px 22px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
+  .vq h3{margin:0;font-size:18px}
+  .badge{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:4px 10px;border-radius:999px;white-space:nowrap}
+  .badge.answer{background:var(--green-soft);color:var(--green)}
+  .badge.refusal{background:var(--amber-soft);color:var(--amber)}
+  .vbody{padding:6px 22px 22px}
+  .step{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.1em;margin:22px 0 12px;font-weight:700}
+
+  .tl{display:flex;flex-direction:column;gap:0}
+  .call{display:flex;gap:14px;padding:12px 0;border-bottom:1px dashed var(--line)}
+  .call:last-child{border-bottom:0}
+  .idx{font-family:var(--mono);font-size:12px;color:#fff;background:var(--green);min-width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .call.err .idx{background:var(--amber)}
+  .call .body{flex:1;min-width:0}
+  .call .name{font-family:var(--mono);font-weight:600;font-size:14px}
+  .call .args{font-family:var(--mono);font-size:12.5px;color:var(--muted)}
+  .call .sum{font-size:13.5px;margin-top:3px}
+  .errtag{color:var(--amber);font-weight:600}
+  .expand{font-size:12px;color:var(--blue);cursor:pointer;user-select:none;margin-top:5px;display:inline-block}
+  pre{background:#0e1a14;color:#cfe8db;font-family:var(--mono);font-size:12px;line-height:1.5;padding:14px;border-radius:9px;overflow:auto;margin:8px 0 0;max-height:320px}
+
+  .outcome{border-radius:12px;padding:18px;margin-top:6px}
+  .outcome.answer{background:var(--green-soft);border:1px solid #c9e6d5}
+  .outcome.refusal{background:var(--amber-soft);border:1px solid #eddcb6}
+  .summary{font-size:15.5px;margin:0 0 6px}
+  .claim{background:#fff;border:1px solid var(--line);border-radius:10px;padding:13px 15px;margin-top:12px}
+  .claim .stmt{font-size:14.5px;margin-bottom:9px}
+  .cites{display:flex;flex-wrap:wrap;gap:8px}
+  .cite{font-family:var(--mono);font-size:12px;background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:5px 9px}
+  .cite b{color:var(--green)}
+  .conf{float:right;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--green);letter-spacing:.05em}
+  .kv{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+  .pill{font-family:var(--mono);font-size:12px;background:#fff;border:1px solid var(--line);border-radius:7px;padding:4px 9px}
+  .pill.req{border-color:#eddcb6;background:#fff}
+  .cnd{font-size:13px;color:var(--muted);margin-top:10px}
+  .meta{display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;font-size:12.5px;color:var(--muted);font-family:var(--mono)}
+
+  footer{padding:40px 0 60px;color:var(--muted);font-size:14px}
+  footer .wrap{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap}
+  .hy{background:var(--green-soft);border:1px solid #c9e6d5;border-radius:10px;padding:12px 16px;font-size:13.5px;color:#1c5e40;margin-top:8px}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <p class="eyebrow">MCP · LangGraph · Pydantic · Evals</p>
+    <h1>Canopy</h1>
+    <p class="lede">A vehicle-diagnostic agent that answers with <b>cited evidence</b> — or
+      <b>refuses, grounded</b>, when its data source genuinely can't answer. Built above a
+      source-agnostic seam, so swapping OBD for raw CAN changes nothing above it.</p>
+    <div class="cta">
+      <a class="btn primary" href="#viewer">Replay a real trace ↓</a>
+      <a class="btn ghost" href="https://github.com/kruslim/canopy">View the code on GitHub</a>
+    </div>
+    <div class="stats">
+      <div class="stat"><b id="s-agree">85%</b><span>LLM-judge ↔ human agreement</span></div>
+      <div class="stat"><b id="s-self">90%</b><span>self-agreement ceiling proxy</span></div>
+      <div class="stat"><b id="s-tests">109</b><span>tests passing</span></div>
+      <div class="stat"><b>0</b><span>hallucinated units — every value cites one</span></div>
+    </div>
+  </div>
+</header>
+
+<section id="thesis">
+  <div class="wrap">
+    <h2>The one bet the whole design rests on</h2>
+    <p class="sub">The GenAI layers are kept ignorant of where a number came from. A normalizer
+      sits between the data and the intelligence, so the tools, agent, and evals never learn
+      whether a reading was an OBD PID or a decoded CAN frame. A seam-enforcement test fails CI
+      if that knowledge leaks upward.</p>
+    <div class="stack">
+      <div class="layer"><span>L6 &nbsp;Evals &amp; human-in-the-loop</span><span class="tag">GenAI · calibrated judge</span></div>
+      <div class="layer"><span>L5 &nbsp;Structured outputs &amp; validation</span><span class="tag">GenAI · Pydantic, cited</span></div>
+      <div class="layer"><span>L4 &nbsp;Agent orchestration</span><span class="tag">GenAI · LangGraph</span></div>
+      <div class="layer"><span>L3 &nbsp;MCP server</span><span class="tag">GenAI · stdio tools</span></div>
+      <div class="layer"><span>L2 &nbsp;Tool design &amp; schemas</span><span class="tag">GenAI · 4 tools</span></div>
+      <div class="seam">↑ above the seam: source-agnostic &nbsp;·&nbsp; the seam &nbsp;·&nbsp; below: knows the source ↓</div>
+      <div class="layer below"><span>L1b Domain logic (diagnostic rules)</span><span class="tag">portable expertise</span></div>
+      <div class="layer below"><span>L1a Normalizer (SignalSample / SignalSeries)</span><span class="tag">the contract</span></div>
+      <div class="layer below"><span>L0 &nbsp;Data access: synthetic | OBD | CAN+DBC</span><span class="tag">plumbing</span></div>
+    </div>
+    <p class="note">Everything shown below runs against the <b>synthetic</b> source — deterministic,
+      so it doubles as the eval fixture. Phase 5 swaps in raw CAN behind the same normalizer;
+      the eval harness is meant to keep passing unchanged. That's the proof the seam held.</p>
+  </div>
+</section>
+
+<section id="eval">
+  <div class="wrap">
+    <h2>The headline number, stated honestly</h2>
+    <p class="sub">A structured error taxonomy — not thumbs-up/down — so every disagreement points
+      at <i>which defense failed</i>. Here is where the judge is trustworthy and where it isn't.</p>
+    <div class="grid2">
+      <div class="card">
+        <div class="bignum" id="c-agree">85%<small>judge ↔ human (n=<span id="c-n">20</span>)</small></div>
+        <p style="color:var(--muted);font-size:14px;margin:10px 0 0">Perfect on the mechanically
+          checkable failures. Every single disagreement was an <code>overconfident</code> call — the
+          one judgment a rubric only partly disciplines. Read the judge as <b>approaching, not
+          exceeding</b>, the reliability ceiling of its ground truth.</p>
+        <div class="caveat" id="caveat">Solo project: no reviewer panel exists…</div>
+      </div>
+      <div class="card">
+        <div style="font-weight:600;font-size:14px;margin-bottom:8px">Agreement by error type</div>
+        <table class="etable" id="etable"></table>
+      </div>
+    </div>
+    <p class="note">Reproducible with no API key: <code>uv run python scripts/calibrate.py</code>.
+      The labels are hand-seeded (a solo project has no panel) — the calibration <i>machinery</i>
+      is the deliverable, and it firms up as real reviewed failures land.</p>
+  </div>
+</section>
+
+<section id="viewer">
+  <div class="wrap">
+    <h2>Replay a real recorded trace</h2>
+    <p class="sub">Every trace below is an actual run pulled from <code>data/evals/traces/</code>
+      — the full tool-call record, the structured answer or the grounded refusal. Nothing here is
+      mocked for the demo. Pick a question:</p>
+    <div class="chips" id="chips" role="tablist"></div>
+    <div class="viewer" id="viewer-panel"></div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div>
+      <div><b>Canopy</b> — <a href="https://github.com/kruslim/canopy">github.com/kruslim/canopy</a></div>
+      <div class="hy">IP hygiene: no proprietary CAN databases, captures, or signal definitions —
+        ever. Only public OBD-II PIDs, open DBCs, and synthetic data. Every trace above is
+        <code>source: synthetic</code>.</div>
+    </div>
+    <div style="max-width:340px">Graceful refusal is a feature, not a failure — a question the
+      source can't answer should produce an honest "I don't have a tool for that," never an
+      invented number.</div>
+  </div>
+</footer>
+
+<script src="data.js"></script>
+<script>
+(function(){
+  var D = window.CANOPY_DATA || {traces:[], calibration:{}};
+  var esc = function(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});};
+
+  // ---- calibration section ----
+  var cal = D.calibration || {};
+  var setTxt = function(id,v){var e=document.getElementById(id); if(e)e.textContent=v;};
+  if(cal.judge_human_agreement!=null){
+    var pct = Math.round(cal.judge_human_agreement*100)+'%';
+    setTxt('s-agree', pct);
+    document.getElementById('c-agree').innerHTML = pct+'<small>judge ↔ human (n='+(cal.n_traces||'?')+')</small>';
+  }
+  if(cal.self_agreement!=null) setTxt('s-self', Math.round(cal.self_agreement*100)+'%');
+  if(cal.n_traces!=null) setTxt('c-n', cal.n_traces);
+  if(cal.single_reviewer_note) setTxt('caveat', cal.single_reviewer_note);
+  var et = document.getElementById('etable');
+  if(et && cal.judge_agreement_by_error_type){
+    var rows = Object.keys(cal.judge_agreement_by_error_type).map(function(k){
+      var v = cal.judge_agreement_by_error_type[k], p = Math.round(v*100);
+      return '<tr><td>'+esc(k)+'<div class="bar"><i style="width:'+p+'%"></i></div></td><td>'+p+'%</td></tr>';
+    });
+    et.innerHTML = rows.join('');
+  }
+
+  // ---- trace viewer ----
+  var chips = document.getElementById('chips');
+  var panel = document.getElementById('viewer-panel');
+
+  function renderCall(inv, i){
+    var raw = esc(JSON.stringify(inv.result, null, 2));
+    var args = Object.keys(inv.arguments||{}).length ? esc(JSON.stringify(inv.arguments)) : '{}';
+    return ''
+      + '<div class="call'+(inv.is_error?' err':'')+'">'
+      +   '<div class="idx">'+(i+1)+'</div>'
+      +   '<div class="body">'
+      +     '<span class="name">'+esc(inv.name)+'</span> <span class="args">'+args+'</span>'
+      +     '<div class="sum">'+(inv.is_error?'<span class="errtag">⚠ recovered · </span>':'')+esc(inv.summary)+'</div>'
+      +     '<span class="expand" data-i="'+i+'">▸ raw result</span>'
+      +     '<pre style="display:none" id="raw-'+i+'">'+raw+'</pre>'
+      +   '</div>'
+      + '</div>';
+  }
+
+  function renderAnswer(a){
+    var claims = (a.claims||[]).map(function(c){
+      var cites = (c.citations||[]).map(function(ci){
+        return '<span class="cite"><b>'+esc(ci.signal)+'</b> = '+esc(ci.value)+' '+esc(ci.unit)
+             + ' <span style="color:var(--muted)">@ '+esc((ci.timestamp||'').replace('T',' ').replace('Z',''))+'</span></span>';
+      }).join('');
+      return '<div class="claim"><span class="conf">'+esc(c.confidence||'')+'</span>'
+           + '<div class="stmt">'+esc(c.statement)+'</div>'
+           + (cites?'<div class="cites">'+cites+'</div>':'<div class="cnd">no citations</div>')+'</div>';
+    }).join('');
+    var cnd = (a.could_not_determine||[]).map(function(x){return '<li>'+esc(x)+'</li>';}).join('');
+    return '<div class="outcome answer">'
+      + '<p class="summary">'+esc(a.summary)+'</p>'
+      + claims
+      + (cnd?'<div class="cnd"><b>Explicitly could not determine:</b><ul style="margin:6px 0 0">'+cnd+'</ul></div>':'')
+      + '</div>';
+  }
+
+  function renderRefusal(r){
+    var req = (r.signals_required||[]).map(function(s){return '<span class="pill req">'+esc(s)+' ✗</span>';}).join('');
+    var av = (r.signals_available||[]).map(function(s){return '<span class="pill">'+esc(s)+'</span>';}).join('');
+    return '<div class="outcome refusal">'
+      + '<p class="summary">The source cannot answer this — refusing rather than guessing.</p>'
+      + '<div style="font-size:13px;color:var(--muted);margin-top:4px">reason: <code>'+esc(r.reason)+'</code></div>'
+      + '<div style="margin-top:12px;font-size:13px"><b>Needs signals this source lacks:</b></div><div class="kv">'+req+'</div>'
+      + '<div style="margin-top:12px;font-size:13px"><b>What <i>is</i> available:</b></div><div class="kv">'+av+'</div>'
+      + '<div class="cnd" style="margin-top:12px">'+esc(r.suggestion)+'</div>'
+      + '</div>';
+  }
+
+  function renderTrace(t){
+    var calls = t.tool_invocations.map(renderCall).join('');
+    var outcome = t.outcome==='refusal' ? renderRefusal(t.refusal) : renderAnswer(t.answer||{});
+    panel.innerHTML = ''
+      + '<div class="vq"><h3>“'+esc(t.question)+'”</h3><span class="badge '+t.outcome+'">'+t.outcome+'</span></div>'
+      + '<div class="vbody">'
+      +   '<div class="step">Tool-call trace — '+t.tool_invocations.length+' call'+(t.tool_invocations.length===1?'':'s')+'</div>'
+      +   '<div class="tl">'+calls+'</div>'
+      +   '<div class="step">Outcome</div>'
+      +   outcome
+      +   '<div class="meta">'
+      +     '<span>agent iterations: '+t.iteration+'</span>'
+      +     '<span>validation retries: '+t.validation_retries+'</span>'
+      +     '<span>forced final: '+t.forced_final+'</span>'
+      +     '<span>source: '+esc(t.source)+'</span>'
+      +   '</div>'
+      + '</div>';
+    panel.querySelectorAll('.expand').forEach(function(el){
+      el.addEventListener('click', function(){
+        var pre = document.getElementById('raw-'+el.getAttribute('data-i'));
+        var open = pre.style.display!=='none';
+        pre.style.display = open?'none':'block';
+        el.textContent = (open?'▸':'▾')+' raw result';
+      });
+    });
+  }
+
+  function select(idx){
+    Array.prototype.forEach.call(chips.children, function(c,i){c.setAttribute('aria-selected', i===idx);});
+    renderTrace(D.traces[idx]);
+  }
+
+  D.traces.forEach(function(t,i){
+    var c = document.createElement('button');
+    c.className='chip'; c.setAttribute('role','tab');
+    c.innerHTML = '<span class="dot '+t.outcome+'"></span>'+esc(t.question);
+    c.addEventListener('click', function(){select(i);});
+    chips.appendChild(c);
+  });
+  if(D.traces.length) select(0);
+})();
+</script>
+</body>
+</html>
