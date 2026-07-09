@@ -1,0 +1,44 @@
+{
+  "trace_id": "cap_004",
+  "question": "Are there any cooling-system problems in this session?",
+  "source": "synthetic",
+  "outcome": "answer",
+  "tool_invocations": [
+    {
+      "name": "run_diagnostic_rules",
+      "arguments": {
+        "start": "2023-10-26T18:15:00Z",
+        "end": "2023-10-26T18:25:00Z"
+      },
+      "result": {
+        "findings": [],
+        "rules_run": [
+          "correlation.coolant_rising_under_moderate_load"
+        ],
+        "skipped": []
+      },
+      "is_error": false
+    }
+  ],
+  "tools_called": [
+    "run_diagnostic_rules"
+  ],
+  "signals_touched": [],
+  "signals_available": null,
+  "findings": [],
+  "skipped": [],
+  "answer": {
+    "summary": "No cooling system problems were found in the time range 2023-10-26T18:15:00Z to 2023-10-26T18:25:00Z. The diagnostic rule 'correlation.coolant_rising_under_moderate_load' ran and found no issues.",
+    "claims": [],
+    "findings_referenced": [],
+    "signals_examined": [],
+    "could_not_determine": [
+      "Whether any cooling system problems occurred during the session."
+    ],
+    "source": "synthetic"
+  },
+  "refusal": null,
+  "iteration": 4,
+  "forced_final": false,
+  "validation_retries": 2
+}

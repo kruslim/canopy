@@ -1,0 +1,99 @@
+{
+  "trace_id": "cap_006",
+  "question": "What is the tire pressure right now?",
+  "source": "synthetic",
+  "outcome": "refusal",
+  "tool_invocations": [
+    {
+      "name": "list_available_signals",
+      "arguments": {},
+      "result": {
+        "source": "synthetic",
+        "signals": [
+          {
+            "name": "EngineRPM",
+            "unit": "rpm",
+            "typical_range": [
+              600.0,
+              6500.0
+            ],
+            "description": "crankshaft rotational speed"
+          },
+          {
+            "name": "VehicleSpeed",
+            "unit": "km/h",
+            "typical_range": [
+              0.0,
+              240.0
+            ],
+            "description": "road speed of the vehicle"
+          },
+          {
+            "name": "CoolantTemp",
+            "unit": "degC",
+            "typical_range": [
+              -40.0,
+              215.0
+            ],
+            "description": "engine coolant temperature"
+          },
+          {
+            "name": "EngineLoad",
+            "unit": "%",
+            "typical_range": [
+              0.0,
+              100.0
+            ],
+            "description": "calculated engine load"
+          },
+          {
+            "name": "ThrottlePosition",
+            "unit": "%",
+            "typical_range": [
+              0.0,
+              100.0
+            ],
+            "description": "throttle plate position"
+          }
+        ]
+      },
+      "is_error": false
+    }
+  ],
+  "tools_called": [
+    "list_available_signals"
+  ],
+  "signals_touched": [],
+  "signals_available": [
+    "EngineRPM",
+    "VehicleSpeed",
+    "CoolantTemp",
+    "EngineLoad",
+    "ThrottlePosition"
+  ],
+  "findings": [],
+  "skipped": [],
+  "answer": null,
+  "refusal": {
+    "question": "What is the tire pressure right now?",
+    "reason": "signal_unavailable",
+    "source_connected": "synthetic",
+    "signals_required": [
+      "TirePressureFrontLeft",
+      "TirePressureFrontRight",
+      "TirePressureRearLeft",
+      "TirePressureRearRight"
+    ],
+    "signals_available": [
+      "EngineRPM",
+      "VehicleSpeed",
+      "CoolantTemp",
+      "EngineLoad",
+      "ThrottlePosition"
+    ],
+    "suggestion": "Connect a data source that provides tire pressure data, such as a TPMS (Tire Pressure Monitoring System) reader."
+  },
+  "iteration": 2,
+  "forced_final": false,
+  "validation_retries": 0
+}

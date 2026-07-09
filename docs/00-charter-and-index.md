@@ -63,8 +63,7 @@ This is not just legal caution. It is what makes the project something you can a
 | 06 | Structured Outputs & Validation | Pydantic contracts, retry, failure modes. | Phase 3 |
 | 07 | Eval Harness & HITL | Review gate, feedback schema, LLM-judge. | Phase 4 |
 | 08 | Raw CAN Extension | Adding DBC decoding behind the normalizer. | Phase 5 |
-| 09 | Interview Defense Guide | What you must be able to explain, and how. | Continuous |
-| 10 | Build Log Template | Decisions, trade-offs, things that broke. | Continuous |
+| 10 | Build Log | Decisions, trade-offs, things that broke. | Continuous |
 
 ---
 
@@ -96,9 +95,7 @@ Ship each phase **completely** before starting the next. A finished single repo 
 
 After Phase 3: close the repo, open a blank file, and rebuild the agent loop from scratch without looking.
 
-If you can, you understand it. If you can't, you have found exactly what to study — and you should not put it on your resume yet.
-
-Claude Code compresses the typing, not the understanding. Building fast with it is expected and correct. Shipping a repo you cannot defend gets you into interview rooms you will then lose.
+If you can, you understand it. If you can't, you have found exactly what to study.
 
 ---
 

@@ -1,0 +1,67 @@
+{
+  "trace_id": "cap_007",
+  "question": "Summarize the session.",
+  "source": "synthetic",
+  "outcome": "answer",
+  "tool_invocations": [
+    {
+      "name": "summarize_session",
+      "arguments": {
+        "start": "2023-10-26T14:44:16Z",
+        "end": "2023-10-26T14:45:16Z"
+      },
+      "result": {
+        "source": "synthetic",
+        "duration_s": 60.0,
+        "signals_present": [
+          "EngineRPM",
+          "VehicleSpeed",
+          "CoolantTemp",
+          "EngineLoad",
+          "ThrottlePosition"
+        ],
+        "sample_counts": {
+          "EngineRPM": 601,
+          "VehicleSpeed": 601,
+          "CoolantTemp": 601,
+          "EngineLoad": 601,
+          "ThrottlePosition": 601
+        },
+        "coverage_gaps": [],
+        "finding_counts": {
+          "violation": 0,
+          "warning": 0,
+          "info": 0
+        }
+      },
+      "is_error": false
+    }
+  ],
+  "tools_called": [
+    "summarize_session"
+  ],
+  "signals_touched": [],
+  "signals_available": null,
+  "findings": [],
+  "skipped": [],
+  "answer": {
+    "summary": "The session covers a 60-second interval with no gaps. Five signals are available: EngineRPM, VehicleSpeed, CoolantTemp, EngineLoad, and ThrottlePosition, each with 601 samples. No diagnostic findings were reported.",
+    "claims": [],
+    "findings_referenced": [],
+    "signals_examined": [
+      "EngineRPM",
+      "VehicleSpeed",
+      "CoolantTemp",
+      "EngineLoad",
+      "ThrottlePosition"
+    ],
+    "could_not_determine": [
+      "This tool returns a structural overview of a data session, it will not tell you what a finding means."
+    ],
+    "source": "synthetic"
+  },
+  "refusal": null,
+  "iteration": 2,
+  "forced_final": false,
+  "validation_retries": 0
+}
