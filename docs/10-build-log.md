@@ -116,6 +116,63 @@ Phase 5 concern.
 
 ---
 
+### [2026-07-08] Phase 1 — Tool-description "before" baseline (rewrite pending a model)
+**Type:** model misuse *(pre-observation)*
+
+**What happened**
+Doc 03's DoD and the seed entry below both want the first tool-description rewrite — the
+"the model kept doing X, so I added this sentence, and it stopped" story. At the end of
+Phase 1 that story **does not exist, and cannot yet**: there is no model in the repo until
+Phase 3, so nothing has misused a tool. Writing a before/after now would be reconstruction —
+the exact anti-pattern this file warns against ("Don't reconstruct. Don't sanitize.").
+
+**What I did instead**
+Froze the two descriptions most likely to generate the story as the *before* baseline, so
+the first real misuse in the Phase 2 Claude Desktop smoke test (or the Phase 3 loop) has an
+exact prior version to diff against. Verbatim, as committed in Phase 1:
+
+`get_signal` — guards against timing analysis on a point read, and unknown-name calls:
+```
+Retrieves one signal over a time range, returned as a timeseries with explicit units and
+timestamps.
+
+The `name` must exactly match a name from list_available_signals. Calling this with an
+unknown name returns a structured error, not an estimate.
+
+Different data sources have very different sample rates. A request-response source may
+return a SINGLE sample (a 'point read'), with actual_sample_rate_hz set to null. Do NOT
+perform timing analysis on a point read — check actual_sample_rate_hz before reasoning about
+how a signal changed over time.
+
+Results are downsampled to max_samples. If `truncated` is true, the series is a decimation
+of the full data and fine timing detail may be lost.
+```
+
+`list_available_signals` — the "call first" / know-what-you-can't-answer tool:
+```
+Returns the complete list of signals available from the currently connected data source,
+with units and typical ranges.
+
+Call this FIRST whenever you are unsure whether a signal exists. Signal availability depends
+entirely on the data source, so the only reliable way to know what you can answer is to ask.
+
+If the signal a user asks about does not appear in this list, it is NOT available: do not
+attempt to retrieve it, do not estimate it, and do not substitute a related signal. Tell the
+user the signal is unavailable and say which source is connected.
+```
+
+**Prediction to test (fill the "after" in Phase 2/3)**
+Per the seed entry: the model will likely either (a) call `get_signal` for a signal that
+doesn't exist instead of `list_available_signals` first, or (b) do timing analysis on a
+point read despite the note. Whichever sentence I add to stop it, diffed against the text
+above, becomes the Tier 3 answer.
+
+**Status of the Doc 03 checkbox**
+Honestly *not done* — deferred to first observation, not skipped. Baseline is captured so it
+becomes a one-line before/after the moment a model misbehaves.
+
+---
+
 ## Seed entries — the things you will almost certainly hit
 
 Pre-written prompts. Fill in the real details when they occur. Delete any that don't.
