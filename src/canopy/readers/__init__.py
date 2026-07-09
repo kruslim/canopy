@@ -6,6 +6,7 @@ protocol, never on a concrete reader.
 """
 
 from canopy.readers.base import SignalReader, UnknownSignalError
+from canopy.readers.factory import build_reader
 from canopy.readers.synthetic import SyntheticReader
 
-__all__ = ["SignalReader", "SyntheticReader", "UnknownSignalError"]
+__all__ = ["SignalReader", "SyntheticReader", "UnknownSignalError", "build_reader"]

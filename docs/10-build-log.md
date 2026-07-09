@@ -173,6 +173,69 @@ becomes a one-line before/after the moment a model misbehaves.
 
 ---
 
+### [2026-07-08] Phase 2 — Low-level `Server` with a directly-registered call handler, not FastMCP
+**Type:** decision
+
+**What happened**
+The MCP Python SDK offers two server APIs: `FastMCP` (decorate a plain function, schema
+inferred from its signature) and the low-level `Server` (register handlers, hand it
+`types.Tool` objects yourself). Chose the low-level API, and registered the call-tool
+handler directly into `server.request_handlers[types.CallToolRequest]` rather than via the
+`@server.call_tool()` decorator.
+
+**Why**
+Two docs/04 requirements decided it. First, the tool schemas must be the Doc-03 Pydantic
+models' `model_json_schema()` verbatim — FastMCP re-derives schemas from function
+signatures, which would put a second schema authority next to the one Phase 1 deliberately
+built. Second, tool errors and protocol errors must stay distinct: the `@server.call_tool()`
+decorator catches *all* handler exceptions and converts them into `isError` tool results,
+which would launder a protocol error (unknown tool name — the client's bug) into a payload
+the model is asked to reason about. Registering the handler directly lets a raised
+`McpError` propagate to the framework and come back as a JSON-RPC error the model never
+sees, while genuine tool errors return as `isError` payloads.
+
+**Did it work**
+`test_unknown_tool_is_a_protocol_error_not_a_tool_result` asserts `McpError` with
+`METHOD_NOT_FOUND` on the client side; `test_unknown_signal_is_a_tool_error_with_recovery_payload`
+asserts the same server returns `isError: true` with `available_signals` + `hint` for the
+model-recoverable case. Both pass over the SDK's in-memory transport, and
+`scripts/smoke_mcp.py` confirms the stdio path end-to-end (10/10).
+
+**Open question**
+The direct `request_handlers` registration reaches past the decorator API into SDK
+internals. If a future SDK version changes how handlers are wired, this is the seam-adjacent
+spot that breaks. Revisit if/when the SDK grows a public way to opt out of exception
+conversion.
+
+---
+
+### [2026-07-08] Phase 2 — Invalid arguments are a tool error, not a protocol error
+**Type:** decision
+
+**What happened**
+docs/04 lists "malformed request" under protocol errors. Arguments that fail Pydantic
+validation (e.g. `max_samples: 5000` against a `le=1000` field) are literally a malformed
+request — but the server returns them as an `isError` tool result with field-level details,
+not as a JSON-RPC error.
+
+**Why**
+The classification test isn't "who violated the schema" but "who can fix it." A malformed
+JSON-RPC envelope or an unadvertised tool name is the *client's* bug — the model can't act
+on it, so surfacing it as a tool result produces confused reasoning about something outside
+the model's control. But schema-violating *arguments* are text the model itself emitted, and
+the model can fix them on the next turn — exactly the recovery loop tool errors exist for.
+So: envelope/dispatch failures → JSON-RPC error; argument validation failures → `isError`
+with `{field, problem}` pairs and a hint to re-read the schema.
+
+**Did it work**
+`test_invalid_arguments_is_a_tool_error_with_field_details` passes: `max_samples: 5000`
+comes back `isError: true`, `error: "invalid_arguments"`, with `max_samples` named in
+`details`. Whether the model actually self-corrects from it is a Phase 3 observation — if it
+doesn't, the `hint` text is the first thing to rewrite, and that becomes a model-misuse
+entry.
+
+---
+
 ## Seed entries — the things you will almost certainly hit
 
 Pre-written prompts. Fill in the real details when they occur. Delete any that don't.
@@ -196,6 +259,10 @@ Watch for: the model calling `get_signal` for a signal that doesn't exist, rathe
 Doc 04 called this *"the most informative five minutes of Phase 2"* and predicted it would be your *"first honest encounter with the model misusing a tool."*
 
 Register the MCP server, ask something in natural language, watch the tool calls. Write down exactly what it did wrong before you fix anything.
+
+*Status [2026-07-08]: server registered in `claude_desktop_config.json` (`canopy`, stdio,
+`CANOPY_SOURCE=synthetic`). The interactive exercise — and whatever the model does wrong
+during it — still has to happen; restart Claude Desktop and ask it a diagnostics question.*
 
 ---
 

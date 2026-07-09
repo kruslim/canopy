@@ -3,9 +3,10 @@
 > An MCP server that exposes vehicle-diagnostic and CAN-bus domain logic as agent tools,
 > with a LangGraph orchestration layer and a human-in-the-loop eval harness.
 
-**Status: Phase 0 (Foundation) complete — normalizer contract + synthetic reader + first
-diagnostic rule. No LLM code in the repo yet.** The design lives in [`docs/`](docs/); the
-build ships one phase at a time.
+**Status: Phase 2 (MCP server) complete — the four schema'd tools are discoverable and
+invocable over stdio by any MCP client, including Claude Desktop. No LLM code in the repo
+yet; the agent arrives in Phase 3.** The design lives in [`docs/`](docs/); the build ships
+one phase at a time.
 
 ## Architecture
 
@@ -18,8 +19,8 @@ rewriting the tools, the agent, or the evals.
 │ L6  Evals & human-in-the-loop                    │  GenAI      (Phase 4)
 │ L5  Structured outputs & validation              │  GenAI      (Phase 3)
 │ L4  Agent orchestration  (LangGraph)             │  GenAI  ←core(Phase 3)
-│ L3  MCP server                                   │  GenAI      (Phase 2)
-│ L2  Tool design & schemas                        │  GenAI      (Phase 1)
+│ L3  MCP server                                   │  GenAI   ✅ Phase 2
+│ L2  Tool design & schemas                        │  GenAI   ✅ Phase 1
 ╞══════════════════════════════════════════════════╡  ← THE SEAM
 │ L1b Domain logic (diagnostic rules)              │  expertise  ✅ Phase 0
 │ L1a Normalizer  (SignalSample / SignalSeries)    │  contract   ✅ Phase 0
@@ -30,7 +31,7 @@ rewriting the tools, the agent, or the evals.
 Everything **above the seam** must be ignorant of whether a number came from an OBD PID or a
 decoded CAN frame. A [seam-enforcement test](tests/test_seam.py) fails CI if that leaks.
 
-## What's built (Phase 0)
+## What's built (Phases 0–2)
 
 - **The normalizer contract** ([`model/signals.py`](src/canopy/model/signals.py)) —
   `SignalSample`, `SignalSeries`, `SignalSource`. A time-ranged read is the general case;
@@ -49,6 +50,17 @@ decoded CAN frame. A [seam-enforcement test](tests/test_seam.py) fails CI if tha
   ([`domain/rules/correlation.py`](src/canopy/domain/rules/correlation.py)) — coolant
   rising while engine load is only moderate. Assumes a timeseries; degrades to a
   low-confidence finding on a point read.
+- **Four schema'd tools** ([`tools/`](src/canopy/tools)) — `list_available_signals`,
+  `summarize_session`, `get_signal`, `run_diagnostic_rules`. Each is a Pydantic input
+  schema + a description written as a prompt fragment + a handler that returns structured
+  errors (with `available_signals` and a hint) instead of raising into the agent loop.
+- **The MCP server** ([`mcp/server.py`](src/canopy/mcp/server.py)) — a thin stdio adapter
+  over the tool layer. Schemas go over the wire as `model_json_schema()` verbatim; tool
+  errors return `isError` payloads the model can recover from, while protocol errors stay
+  JSON-RPC errors the model never sees. Reader selection is env-driven
+  (`CANOPY_SOURCE`, resolved below the seam by
+  [`readers/factory.py`](src/canopy/readers/factory.py)) — the server never learns which
+  source it is serving.
 
 ## Trade-offs (honest)
 
@@ -87,3 +99,28 @@ series = SyntheticReader(seed=42).read(
 )
 print(len(series.samples), series.unit, series.sample_rate_hz, series.is_point_read)
 ```
+
+Phase 2 done-signal — a bare MCP client drives the real server as a subprocess
+(discovery, invocation, structured errors, clean shutdown; no LLM anywhere):
+
+```bash
+uv run python scripts/smoke_mcp.py
+```
+
+To explore the same server interactively, register it with any MCP client — e.g. in
+Claude Desktop's `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "canopy": {
+      "command": "/absolute/path/to/repo/.venv/bin/python",
+      "args": ["-m", "canopy.mcp"],
+      "env": { "CANOPY_SOURCE": "synthetic" }
+    }
+  }
+}
+```
+
+The same server, zero code changes, backs the Phase 3 LangGraph agent — that is the
+decoupling MCP buys.
