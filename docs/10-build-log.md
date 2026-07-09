@@ -56,6 +56,66 @@ Use whichever fits. Don't force a format.
 
 ---
 
+## Entries
+
+### [2026-07-08] Phase 1 — Signal metadata lives on the reader, not a shared registry
+**Type:** decision
+
+**What happened**
+`list_available_signals` (and `summarize_session`) need each signal's unit, typical range,
+and human gloss — metadata that in Phase 0 lived in a private `SyntheticReader.signal_descriptor()`
+returning the internal `_SignalSpec`. The tool layer may only reach data through the
+`SignalReader` protocol (Constraint 1), so it could not call that private method.
+
+**Why**
+Two options: (a) add `describe(name) -> SignalDescriptor` to the protocol so each reader owns
+its own metadata; (b) put a canonical metadata registry in `domain/` keyed by name. Chose (a).
+A shared registry can silently drift from what a reader actually produces — the OBD reader and
+the CAN reader will legitimately expose different units and ranges for overlapping concepts,
+and a central table would have to special-case per source, which is exactly the source-branching
+the seam forbids. Metadata is a property of the source, so it belongs on the reader.
+
+**Fix**
+Added a public `SignalDescriptor` model to `model/signals.py`, `describe()` to the
+`SignalReader` protocol, and a `source` property alongside it (the tools need to report
+provenance without reading a sample). Replaced `signal_descriptor()`/`_SignalSpec` leakage
+with `describe()` returning the public model.
+
+**Did it work**
+`test_list_available_signals_returns_all_descriptors` and the seam test both pass; nothing
+above the seam names a data source.
+
+**Open question**
+When two readers disagree on a signal's unit, is the canonical name still the right join key,
+or does the agent need to see the source-qualified descriptor? Revisit in Phase 5.
+
+---
+
+### [2026-07-08] Phase 1 — Deferred the real ObdReader; simulate point reads with synthetic
+**Type:** decision
+
+**What happened**
+docs/03's point-read and skip tests reference "ObdReader (or a stub)." Building a real OBD
+reader now would make the point-read story concrete.
+
+**Why**
+The Phase 1 definition-of-done says all tests run against `SyntheticReader`, and a zero-span
+read (`start == end`) already degrades to a single-sample point read — the exact OBD behaviour.
+Building ObdReader now expands Phase 1 beyond its DoD for no test coverage that synthetic can't
+already provide. The rule-skip path (a source lacking a required signal) is exercised with a
+small in-test `_LimitedReader` stub rather than a whole new concretion.
+
+**Fix**
+Point-read test uses `get_signal(..., start=T0, end=T0)`. Skip test uses `_LimitedReader`
+withholding `EngineLoad`. No `readers/obd.py` yet.
+
+**Did it work**
+`test_get_signal_point_read_sets_null_rate_and_note` and
+`test_run_diagnostic_rules_skips_when_signal_unavailable` pass. ObdReader is a Phase 1.5 /
+Phase 5 concern.
+
+---
+
 ## Seed entries — the things you will almost certainly hit
 
 Pre-written prompts. Fill in the real details when they occur. Delete any that don't.

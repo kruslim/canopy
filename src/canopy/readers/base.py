@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Protocol, runtime_checkable
 
-from canopy.model.signals import SignalSeries
+from canopy.model.signals import SignalDescriptor, SignalSeries, SignalSource
 
 
 class UnknownSignalError(Exception):
@@ -36,9 +36,29 @@ class SignalReader(Protocol):
     """Implemented by ``SyntheticReader`` (Phase 0), ``ObdReader`` (Phase 1),
     ``CanLogReader`` (Phase 5)."""
 
+    @property
+    def source(self) -> SignalSource:
+        """Which normalized source this reader represents (``obd`` / ``can`` / ``synthetic``).
+
+        Exposed so tools can report provenance without reading a sample. It is a *value*
+        from the normalized ``SignalSource`` enum, not source-library knowledge — callers
+        above the seam report it but must never branch on it (docs/02)."""
+        ...
+
     def available_signals(self) -> list[str]:
         """Canonical names this reader can produce. The agent needs this to know what it
         cannot answer."""
+        ...
+
+    def describe(self, name: str) -> SignalDescriptor:
+        """Static metadata (unit, typical range, gloss) for one available signal.
+
+        Each source owns its own metadata, so this lives on the reader rather than in a
+        shared registry that could drift from what the source actually produces. The tool
+        layer reaches signal metadata only through here — never by importing a concretion.
+
+        Raises ``UnknownSignalError`` if ``name`` is not in ``available_signals()``.
+        """
         ...
 
     def read(self, name: str, start: datetime, end: datetime) -> SignalSeries:

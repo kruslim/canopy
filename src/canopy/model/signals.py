@@ -30,6 +30,23 @@ class SignalSource(StrEnum):
     SYNTHETIC = "synthetic"
 
 
+class SignalDescriptor(BaseModel):
+    """Static metadata about a signal a source can produce — independent of any read.
+
+    Returned by ``list_available_signals`` (Phase 1) so the agent can see *what exists*,
+    with units and typical ranges, before committing to an expensive ``get_signal`` call.
+    ``typical_range`` is advisory (a physically plausible band), never a hard limit.
+    """
+
+    name: str = Field(..., description="Canonical signal name, e.g. 'EngineRPM'.")
+    unit: str = Field(..., description="Engineering unit, e.g. 'rpm', 'km/h', 'degC'.")
+    typical_range: tuple[float, float] | None = Field(
+        default=None,
+        description="Advisory (min, max) band in the signal's unit; None if unbounded.",
+    )
+    description: str = Field(..., description="Human-meaningful gloss, e.g. 'crankshaft speed'.")
+
+
 class SignalSample(BaseModel):
     """One observation of one signal at one instant."""
 

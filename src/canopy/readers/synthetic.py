@@ -17,7 +17,12 @@ import random
 from dataclasses import dataclass
 from datetime import datetime
 
-from canopy.model.signals import SignalSample, SignalSeries, SignalSource
+from canopy.model.signals import (
+    SignalDescriptor,
+    SignalSample,
+    SignalSeries,
+    SignalSource,
+)
 from canopy.readers.base import UnknownSignalError
 
 
@@ -43,9 +48,7 @@ _SIGNALS: dict[str, _SignalSpec] = {
     "CoolantTemp": _SignalSpec(
         3, "degC", 90.0, 3.0, 0.5, (-40.0, 215.0), "engine coolant temperature"
     ),
-    "EngineLoad": _SignalSpec(
-        4, "%", 40.0, 8.0, 1.5, (0.0, 100.0), "calculated engine load"
-    ),
+    "EngineLoad": _SignalSpec(4, "%", 40.0, 8.0, 1.5, (0.0, 100.0), "calculated engine load"),
     "ThrottlePosition": _SignalSpec(
         5, "%", 20.0, 12.0, 2.0, (0.0, 100.0), "throttle plate position"
     ),
@@ -78,6 +81,10 @@ class SyntheticReader:
         self.seed = seed
         self.sample_rate_hz = sample_rate_hz
         self.anomaly = anomaly
+
+    @property
+    def source(self) -> SignalSource:
+        return SignalSource.SYNTHETIC
 
     def available_signals(self) -> list[str]:
         return list(_SIGNALS)
@@ -121,12 +128,18 @@ class SyntheticReader:
             name=name, unit=spec.unit, source=SignalSource.SYNTHETIC, samples=samples
         )
 
-    def signal_descriptor(self, name: str) -> _SignalSpec:
-        """Unit / typical-range / description metadata for a signal (used later by the
-        ``list_available_signals`` tool in Phase 1)."""
+    def describe(self, name: str) -> SignalDescriptor:
+        """Unit / typical-range / description metadata for a signal, used by the
+        ``list_available_signals`` tool (docs/03)."""
         if name not in _SIGNALS:
             raise UnknownSignalError(name, self.available_signals())
-        return _SIGNALS[name]
+        spec = _SIGNALS[name]
+        return SignalDescriptor(
+            name=name,
+            unit=spec.unit,
+            typical_range=spec.typical_range,
+            description=spec.description,
+        )
 
 
 def _seconds(value: float):

@@ -32,6 +32,6 @@ def test_above_seam_has_no_data_source_leak():
                 if _FORBIDDEN.search(line):
                     offenders.append(f"{py.relative_to(_SRC)}:{lineno}: {line.strip()}")
 
-    assert not offenders, (
-        "Data-source knowledge leaked above the seam (docs/02):\n" + "\n".join(offenders)
+    assert not offenders, "Data-source knowledge leaked above the seam (docs/02):\n" + "\n".join(
+        offenders
     )
