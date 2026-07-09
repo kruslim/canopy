@@ -1,0 +1,68 @@
+flowchart TB
+    User["User<br/>'Did the rear camera activate<br/>within 2s in run 47?'"]
+
+    subgraph AgentLayer["AGENT ORCHESTRATION — LangGraph (GenAI)"]
+        direction TB
+        LLM["LLM<br/>reason → select tool"]
+        Decide{"Need<br/>another<br/>tool?"}
+        Validate["Validate output<br/>Pydantic schema"]
+        LLM --> Decide
+        Decide -->|"no"| Validate
+    end
+
+    subgraph MCPLayer["MCP SERVER — tool exposure (GenAI)"]
+        direction TB
+        Schema["Tool schemas + descriptions<br/>(model reads these)"]
+        T1["get_signal(name, time_range)"]
+        T2["decode_frame(can_id, payload)"]
+        T3["check_activation_timing(run_id)"]
+        T4["summarize_session(run_id)"]
+        Schema --- T1
+        Schema --- T2
+        Schema --- T3
+        Schema --- T4
+    end
+
+    subgraph DomainLayer["DOMAIN LOGIC — your expertise (not GenAI)"]
+        direction TB
+        Norm["Normalizer<br/>→ common signal model<br/>{name, value, unit, timestamp}"]
+        Rules["FMVSS 111 / diagnostic rules"]
+        Norm --> Rules
+    end
+
+    subgraph DataLayer["DATA ACCESS — interchangeable plumbing"]
+        direction LR
+        subgraph Phase1["Phase 1: OBD (start here)"]
+            OBD["python-OBD<br/>request/response<br/>standard PIDs"]
+            Dongle["ELM327 dongle<br/>or simulator"]
+            OBD --- Dongle
+        end
+        subgraph Phase2["Phase 2: raw CAN (add later)"]
+            CAN["cantools + python-can<br/>broadcast stream"]
+            DBC["public DBC file<br/>+ logged capture"]
+            CAN --- DBC
+        end
+    end
+
+    User --> LLM
+    Decide -->|"yes — call tool"| Schema
+    T1 & T2 & T3 & T4 --> Norm
+    Rules --> Result["tool result<br/>(structured)"]
+    Result -.->|"fed back into context"| LLM
+
+    Norm -.-> OBD
+    Norm -.-> CAN
+
+    Validate --> Answer["Structured answer<br/>+ tool-call trace"]
+    Answer --> HITL["Human review gate<br/>(Project 3)"]
+    HITL --> EvalSet[("Eval set<br/>grows from<br/>corrections")]
+
+    classDef genai fill:#2d3f5e,stroke:#5b7fb5,color:#fff
+    classDef domain fill:#4a3b2a,stroke:#9c7a4a,color:#fff
+    classDef data fill:#2a3f38,stroke:#5a8f78,color:#fff
+    classDef io fill:#3d3d3d,stroke:#888,color:#fff
+
+    class LLM,Decide,Validate,Schema,T1,T2,T3,T4 genai
+    class Norm,Rules domain
+    class OBD,CAN,Dongle,DBC data
+    class User,Answer,Result,HITL,EvalSet io

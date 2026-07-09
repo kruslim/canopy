@@ -1,0 +1,18 @@
+# ── IP hygiene (see docs/00 and docs/02) — NEVER commit proprietary artifacts ──
+data/captures/proprietary/
+*.private.dbc
+
+# ── Python ──
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+
+# ── OS ──
+.DS_Store
