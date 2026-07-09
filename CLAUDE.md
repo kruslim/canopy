@@ -8,10 +8,12 @@ architecture. This file states the **hard constraints** — violating one is a b
 not a style choice.
 
 ## Phase discipline
-Ship each phase completely before the next (docs/00). We are at **Phase 3**
-(agent: LangGraph loop + structured outputs — `langgraph`/`langchain`/`anthropic`
-are now legitimately in the tree). Phase 4 (evals & HITL) has not started: no
-review-queue, judge, or eval-harness code until then.
+Ship each phase completely before the next (docs/00). We are at **Phase 4 complete**
+(evals & HITL: review-gate interrupt, structured-feedback taxonomy, seeded eval set,
+regression runner, calibrated LLM-judge — all in `evals/`). Phase 5 (raw CAN behind the
+same normalizer — docs/08) has not started: no `obd`/`dbc`/`cantools` code, and nothing
+above the seam may change when it does. The eval harness must keep passing unchanged
+through Phase 5 — that is the proof the seam held.
 
 ## Data sources & rig
 The real-world inputs the readers ultimately model (below the seam — this context

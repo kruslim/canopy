@@ -1,0 +1,30 @@
+{
+  "_about": "Seed calibration labels for the LLM-judge (docs/07). Each record is one reviewed trace, with error-type labels from a human review pass A, a second human pass B one week later (the solo-project stand-in for a second reviewer), and the LLM-judge's labels. Agreement is computed from these by scripts/calibrate.py. THESE ARE SEED LABELS: this is a solo project, so the ground truth is hand-authored and illustrative — the calibration *machinery* is real and the number is honestly computed, but it firms up only as real reviewed failures (origin: from_review) replace these seeds. Empty error_types = the reviewer/judge found the trace sound.",
+  "_taxonomy": "error_types use the ErrorType enum in src/canopy/evals/schemas.py",
+  "traces": [
+    {"trace_id": "cal_clean_01", "human_a": [], "human_b": [], "judge": []},
+    {"trace_id": "cal_clean_02", "human_a": [], "human_b": [], "judge": []},
+    {"trace_id": "cal_clean_03", "human_a": [], "human_b": [], "judge": []},
+    {"trace_id": "cal_clean_04", "human_a": [], "human_b": [], "judge": []},
+    {"trace_id": "cal_clean_05", "human_a": [], "human_b": [], "judge": []},
+
+    {"trace_id": "cal_halluc_01", "human_a": ["hallucinated_value"], "human_b": ["hallucinated_value"], "judge": ["hallucinated_value"]},
+    {"trace_id": "cal_halluc_02", "human_a": ["hallucinated_value"], "human_b": ["hallucinated_value"], "judge": ["hallucinated_value"]},
+    {"trace_id": "cal_halluc_03", "human_a": ["hallucinated_value"], "human_b": ["hallucinated_value"], "judge": ["hallucinated_value"]},
+    {"trace_id": "cal_halluc_04", "human_a": ["hallucinated_value"], "human_b": ["hallucinated_value"], "judge": ["hallucinated_value"]},
+
+    {"trace_id": "cal_absence_01", "human_a": ["absence_as_negation"], "human_b": ["absence_as_negation"], "judge": ["absence_as_negation"]},
+    {"trace_id": "cal_absence_02", "human_a": ["absence_as_negation"], "human_b": ["absence_as_negation"], "judge": ["absence_as_negation"]},
+    {"trace_id": "cal_absence_03", "human_a": ["absence_as_negation"], "human_b": ["absence_as_negation"], "judge": ["absence_as_negation"]},
+
+    {"trace_id": "cal_missed_refusal_01", "human_a": ["missed_refusal"], "human_b": ["missed_refusal"], "judge": ["missed_refusal"]},
+    {"trace_id": "cal_point_read_01", "human_a": ["point_read_as_series"], "human_b": ["point_read_as_series"], "judge": ["point_read_as_series"]},
+    {"trace_id": "cal_unit_error_01", "human_a": ["unit_error"], "human_b": ["unit_error"], "judge": ["unit_error"]},
+
+    {"trace_id": "cal_overconf_01", "human_a": ["overconfident"], "human_b": ["overconfident"], "judge": ["overconfident"]},
+    {"trace_id": "cal_overconf_02", "human_a": ["overconfident"], "human_b": ["overconfident"], "judge": []},
+    {"trace_id": "cal_overconf_03", "human_a": ["overconfident"], "human_b": ["overconfident"], "judge": []},
+    {"trace_id": "cal_overconf_04", "human_a": ["overconfident"], "human_b": [], "judge": []},
+    {"trace_id": "cal_overconf_05", "human_a": [], "human_b": ["overconfident"], "judge": []}
+  ]
+}

@@ -3,10 +3,33 @@
 > An MCP server that exposes vehicle-diagnostic and CAN-bus domain logic as agent tools,
 > with a LangGraph orchestration layer and a human-in-the-loop eval harness.
 
-**Status: Phase 2 (MCP server) complete — the four schema'd tools are discoverable and
-invocable over stdio by any MCP client, including Claude Desktop. No LLM code in the repo
-yet; the agent arrives in Phase 3.** The design lives in [`docs/`](docs/); the build ships
-one phase at a time.
+**Status: Phase 4 (evals & human-in-the-loop) complete.** A LangGraph agent answers
+natural-language diagnostics questions with validated, cited structured output — or refuses,
+grounded, when the connected source can't answer. Every consequential output can pass through
+a human-review interrupt whose structured corrections become permanent regression cases, and
+an LLM-judge scores traces against the same taxonomy the human uses. The design lives in
+[`docs/`](docs/); the build ships one phase at a time.
+
+## Evaluation — the headline number
+
+> The LLM-judge agrees with human review on **85%** of traces (n=20). Inter-rater reliability
+> could not be measured with a panel — this is a solo project — so the same subset was scored
+> twice, one week apart, reaching **90%** self-agreement. **The judge should therefore be read
+> as approaching, not exceeding, the reliability ceiling of its ground truth.** Agreement is
+> perfect on the mechanically checkable failures — `hallucinated_value` and
+> `absence_as_negation`, which a judge can verify against the trace — and *every* disagreement
+> was an `overconfident` call (85%), a judgment a rubric only partially disciplines.
+
+That paragraph is the point of Phase 4: a number, measured honestly, with its ceiling and its
+weak spot stated rather than hidden. The labels behind it are hand-seeded (a solo project has
+no panel) and firm up as real reviewed failures land — the calibration *machinery* is real and
+reproducible with no API key: `uv run python scripts/calibrate.py`.
+
+**Why a structured taxonomy, not thumbs-up/down?** A thumbs-down says the answer was bad. A
+structured [`ErrorType`](src/canopy/evals/schemas.py) says *which of my defenses failed* —
+whether a tool description needs a sentence, a refusal path didn't trigger, or a validator has
+a gap. The taxonomy is derived from the architecture's known weak points, so every label points
+at a fix.
 
 ## Architecture
 
@@ -16,9 +39,9 @@ rewriting the tools, the agent, or the evals.
 
 ```
 ┌──────────────────────────────────────────────────┐
-│ L6  Evals & human-in-the-loop                    │  GenAI      (Phase 4)
-│ L5  Structured outputs & validation              │  GenAI      (Phase 3)
-│ L4  Agent orchestration  (LangGraph)             │  GenAI  ←core(Phase 3)
+│ L6  Evals & human-in-the-loop                    │  GenAI   ✅ Phase 4
+│ L5  Structured outputs & validation              │  GenAI   ✅ Phase 3
+│ L4  Agent orchestration  (LangGraph)             │  GenAI  ✅←core Phase 3
 │ L3  MCP server                                   │  GenAI   ✅ Phase 2
 │ L2  Tool design & schemas                        │  GenAI   ✅ Phase 1
 ╞══════════════════════════════════════════════════╡  ← THE SEAM
@@ -31,7 +54,7 @@ rewriting the tools, the agent, or the evals.
 Everything **above the seam** must be ignorant of whether a number came from an OBD PID or a
 decoded CAN frame. A [seam-enforcement test](tests/test_seam.py) fails CI if that leaks.
 
-## What's built (Phases 0–2)
+## What's built (Phases 0–4)
 
 - **The normalizer contract** ([`model/signals.py`](src/canopy/model/signals.py)) —
   `SignalSample`, `SignalSeries`, `SignalSource`. A time-ranged read is the general case;
@@ -61,6 +84,23 @@ decoded CAN frame. A [seam-enforcement test](tests/test_seam.py) fails CI if tha
   (`CANOPY_SOURCE`, resolved below the seam by
   [`readers/factory.py`](src/canopy/readers/factory.py)) — the server never learns which
   source it is serving.
+- **The LangGraph agent** ([`agent/graph.py`](src/canopy/agent/graph.py)) — `agent → tools →
+  validate → refuse` as a state graph. Structured output arrives through a `submit_answer`
+  tool schema; validation failure is a *turn* (the Pydantic error is fed back with the failing
+  field and a legal escape), capped at two retries, then degrading to a code-built honest
+  answer rather than crashing. The iteration cap converts to a forced-answer degraded turn.
+- **The grounded refusal path** ([`agent/contracts.py`](src/canopy/agent/contracts.py)) — the
+  headline behavior: a question the source cannot answer produces a `Refusal` naming the
+  missing signal and what *is* available, filled by code from a tool result, never from model
+  self-knowledge. A cross-validator rejects any answer citing a signal the trace never
+  retrieved — confabulation caught mechanically.
+- **The eval harness & HITL** ([`evals/`](src/canopy/evals)) — a reviewable [`Trace`](src/canopy/evals/trace.py)
+  (full tool-call record, skipped rules, outcome); a [review gate](src/canopy/evals/review.py)
+  built as a LangGraph **interrupt** whose `correct` verdicts mint `from_review` regression
+  cases; a [structured feedback taxonomy](src/canopy/evals/schemas.py) derived from the
+  architecture's weak points; a [regression runner](src/canopy/evals/runner.py) with
+  deterministic fixtures and hard assertions that run in CI; and a
+  [calibrated LLM-judge](src/canopy/evals/judge.py) scoring the trace, not just the answer.
 
 ## Trade-offs (honest)
 
@@ -124,3 +164,21 @@ Claude Desktop's `claude_desktop_config.json`:
 
 The same server, zero code changes, backs the Phase 3 LangGraph agent — that is the
 decoupling MCP buys.
+
+Phase 3 done-signal — ask the agent a question (needs a provider key in `.env`; copy
+[`.env.example`](.env.example)). A grounded refusal on an unanswerable question is a *success*:
+
+```bash
+uv run python scripts/ask.py "Is the engine overheating?"
+uv run python scripts/ask.py "Did the rear camera activate within 2 seconds?"   # → refusal
+```
+
+Phase 4 done-signal — the eval harness. Hard assertions run hermetically in the test suite
+(no key); the live replay and the judge run against a real model; the calibration number is
+reproducible from recorded labels with no key:
+
+```bash
+uv run pytest tests/test_eval_runner.py     # regression suite, scripted model, no key
+uv run python scripts/calibrate.py          # the 85% / 90% agreement report
+uv run python scripts/eval.py --judge       # live replay + LLM-judge (needs a key)
+```

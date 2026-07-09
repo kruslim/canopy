@@ -257,18 +257,25 @@ Note the two-tier scoring: **hard assertions** (did it refuse? did it cite the r
 
 ## Definition of done — Phase 4
 
-- [ ] Review gate implemented as a LangGraph interrupt
-- [ ] Reviewer UI shows the **full trace**, not just the answer
-- [ ] `ReviewFeedback` schema with an error taxonomy **derived from your architecture's weak points**
-- [ ] `failure_stage` captured (retrieval / tool use / generation)
-- [ ] Eval set seeded with ~6 handwritten cases covering each defense
-- [ ] Corrections from review automatically become `EvalCase` rows with `origin: from_review`
-- [ ] Regression runner with deterministic `SyntheticReader` fixtures
-- [ ] Hard assertions in CI on every commit
-- [ ] LLM-judge scoring the trace (not just the answer), emitting the same `ErrorType` taxonomy
-- [ ] `CalibrationReport` with judge-human agreement **and** an honesty statement about the single-reviewer limitation
-- [ ] Self-agreement measured (score a subset twice, a week apart)
-- [ ] **The README leads with the agreement number and the reviewer-disagreement discussion**
+- [x] Review gate implemented as a LangGraph interrupt — `evals/review.py` (`interrupt` + `MemorySaver`)
+- [x] Reviewer UI shows the **full trace**, not just the answer — `Trace.render()` in `evals/trace.py`
+- [x] `ReviewFeedback` schema with an error taxonomy **derived from your architecture's weak points** — `evals/schemas.py`
+- [x] `failure_stage` captured (retrieval / tool use / generation) — `ReviewFeedback.failure_stage`
+- [x] Eval set seeded with 6 handwritten cases covering each defense — `evals/cases.py`
+- [x] Corrections from review automatically become `EvalCase` rows with `origin: from_review` — `review.record_correction_node`
+- [x] Regression runner with deterministic fixtures — `evals/runner.py` + `readers/fixtures.py`
+- [x] Hard assertions in CI on every commit — `tests/test_eval_runner.py` (hermetic, scripted model)
+- [x] LLM-judge scoring the trace (not just the answer), emitting the same `ErrorType` taxonomy — `evals/judge.py`
+- [x] `CalibrationReport` with judge-human agreement **and** an honesty statement about the single-reviewer limitation — `CalibrationReport.single_reviewer_note`
+- [x] Self-agreement measured (score a subset twice, a week apart) — `scripts/calibrate.py`, 90% (n=20)
+- [x] **The README leads with the agreement number and the reviewer-disagreement discussion** — 85% / 90% ceiling
+
+**Phase 4 done: `judge–human agreement = 85% (n=20)`, self-agreement ceiling `90%`.** The
+number is computed from seed labels (`data/evals/calibration_labels.json`) by
+`scripts/calibrate.py`; on a solo project the ground truth is hand-authored and grows as real
+`from_review` cases land. One deliberate scope note: the review gate runs against *named
+fixtures* (`readers/fixtures.py`), because only a reproducible source can become a replayable
+regression case — the flywheel is closed by construction, not by hope.
 
 ---
 

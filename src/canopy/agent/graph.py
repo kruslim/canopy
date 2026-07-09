@@ -47,6 +47,7 @@ from canopy.agent.prompts import (
     VALIDATION_FEEDBACK_TEMPLATE,
 )
 from canopy.agent.state import CanopyState
+from canopy.agent.tool_schema import inline_schema_defs
 from canopy.model.findings import Finding
 from canopy.readers.base import SignalReader
 
@@ -63,7 +64,9 @@ _SUBMIT_ANSWER_DEF = {
         "retrieved sample. List anything the data could not determine in "
         "could_not_determine rather than guessing."
     ),
-    "input_schema": AnswerPayload.model_json_schema(),
+    # Inlined so nested Claim/Citation definitions travel in-place: a $defs/$ref schema
+    # makes some provider adapters (Gemini) warn and flatten (canopy.agent.tool_schema).
+    "input_schema": inline_schema_defs(AnswerPayload.model_json_schema()),
 }
 _REFUSE_DEF = {
     "name": REFUSE_TOOL,
@@ -72,7 +75,7 @@ _REFUSE_DEF = {
         "signal(s). A grounded refusal is a correct final answer. Only use after checking "
         "list_available_signals."
     ),
-    "input_schema": RefusalPayload.model_json_schema(),
+    "input_schema": inline_schema_defs(RefusalPayload.model_json_schema()),
 }
 
 
@@ -142,6 +145,7 @@ def build_graph(model: Any, executor: ToolExecutor):
         signals = list(state.signals_touched)
         findings = list(state.findings)
         available = state.signals_available
+        skipped = list(state.skipped)
 
         for call in _tool_calls(state.messages[-1]):
             payload = executor.execute(call["name"], call["args"])
@@ -158,6 +162,12 @@ def build_graph(model: Any, executor: ToolExecutor):
                     for sample in finding.evidence:
                         if sample.name not in signals:
                             signals.append(sample.name)
+            if "skipped" in payload:
+                # A skipped rule is "we didn't look," not "nothing wrong" — the reviewer and
+                # the ABSENCE_AS_NEGATION check both need it in the trace (docs/07).
+                for entry in payload["skipped"]:
+                    if entry not in skipped:
+                        skipped.append(entry)
             if "signals" in payload:
                 available = [s["name"] for s in payload["signals"]]
 
@@ -175,6 +185,7 @@ def build_graph(model: Any, executor: ToolExecutor):
             "signals_touched": signals,
             "findings": findings,
             "signals_available": available,
+            "skipped": skipped,
         }
 
     def _validation_failure(state: CanopyState, feedback: str, tool_call_id: str | None) -> dict:

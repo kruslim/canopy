@@ -135,6 +135,40 @@ def test_get_signal_unknown_name_returns_structured_error():
     assert out["hint"]
 
 
+# An excessively wide window is a recoverable tool error, not an exception that spins the
+# CPU materializing billions of samples — every read-tool converts the reader's raise.
+_HUGE_WINDOW = timedelta(days=3650)
+
+
+def test_get_signal_oversized_window_returns_structured_error():
+    out = get_signal(
+        SyntheticReader(seed=1),
+        GetSignalInput(name="EngineRPM", start=T0, end=T0 + _HUGE_WINDOW),
+    )
+    assert isinstance(out, dict)
+    assert out["error"] == "window_too_large"
+    assert out["estimated_samples"] > out["max_samples"]
+    assert "narrow" in out["hint"].lower()
+
+
+def test_run_diagnostic_rules_oversized_window_returns_structured_error():
+    out = run_diagnostic_rules(
+        SyntheticReader(seed=3, anomaly="overheat"),
+        RunDiagnosticRulesInput(start=T0, end=T0 + _HUGE_WINDOW),
+    )
+    assert isinstance(out, dict)
+    assert out["error"] == "window_too_large"
+
+
+def test_summarize_session_oversized_window_returns_structured_error():
+    out = summarize_session(
+        SyntheticReader(seed=1),
+        SummarizeSessionInput(start=T0, end=T0 + _HUGE_WINDOW),
+    )
+    assert isinstance(out, dict)
+    assert out["error"] == "window_too_large"
+
+
 # ------------------------------------------------------------------------ run_diagnostic_rules
 def test_run_diagnostic_rules_fires_with_cited_evidence():
     reader = SyntheticReader(seed=3, anomaly="overheat")

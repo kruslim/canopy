@@ -23,7 +23,7 @@ from canopy.model.signals import (
     SignalSeries,
     SignalSource,
 )
-from canopy.readers.base import UnknownSignalError
+from canopy.readers.base import UnknownSignalError, WindowTooLargeError
 
 
 @dataclass(frozen=True)
@@ -64,6 +64,12 @@ _ANOMALIES: dict[str, dict[str, float]] = {
 
 _DEFAULT_SAMPLE_RATE_HZ = 10.0
 
+# Upper bound on samples a single read may materialize. Sits far above any realistic
+# diagnostic window (a full hour at 10 Hz is 36k samples) and only trips on a pathological
+# span — a decade-wide window at 10 Hz would try to build ~3 billion samples in a Python
+# loop. The guard raises before the loop so a bad span costs nothing.
+_MAX_MATERIALIZED_SAMPLES = 1_000_000
+
 
 class SyntheticReader:
     """A ``SignalReader`` backed by generated waveforms. Deterministic per ``seed``."""
@@ -73,24 +79,36 @@ class SyntheticReader:
         seed: int = 0,
         sample_rate_hz: float = _DEFAULT_SAMPLE_RATE_HZ,
         anomaly: str | None = None,
+        available: tuple[str, ...] | None = None,
     ) -> None:
         if anomaly is not None and anomaly not in _ANOMALIES:
             raise ValueError(
                 f"Unknown anomaly {anomaly!r}. Known: {', '.join(_ANOMALIES) or '(none)'}."
             )
+        # A real connection exposes a *subset* of what the bus could carry — the port may
+        # only bring out HS1/HS2, so callers must treat availability as discovered, not
+        # fixed (CLAUDE.md). ``available`` restricts this reader to that discovered subset;
+        # asking for anything outside it raises ``UnknownSignalError`` exactly as a source
+        # that never carried the signal would. ``None`` means "everything this reader can
+        # synthesize."
+        if available is not None:
+            unknown = [s for s in available if s not in _SIGNALS]
+            if unknown:
+                raise ValueError(f"Cannot expose signals this reader cannot synthesize: {unknown}.")
         self.seed = seed
         self.sample_rate_hz = sample_rate_hz
         self.anomaly = anomaly
+        self._available = tuple(available) if available is not None else tuple(_SIGNALS)
 
     @property
     def source(self) -> SignalSource:
         return SignalSource.SYNTHETIC
 
     def available_signals(self) -> list[str]:
-        return list(_SIGNALS)
+        return list(self._available)
 
     def read(self, name: str, start: datetime, end: datetime) -> SignalSeries:
-        if name not in _SIGNALS:
+        if name not in self._available:
             raise UnknownSignalError(name, self.available_signals())
         if end < start:
             raise ValueError("end must be >= start")
@@ -102,6 +120,17 @@ class SyntheticReader:
         # N samples across the span => (N - 1) intervals; a zero span yields one sample
         # (a point read), which is exactly how an OBD "value now" read degrades.
         n = int(math.floor(span_s * self.sample_rate_hz)) + 1
+
+        # Refuse a span that would build an unusable, memory-heavy list. Raised before the
+        # loop so the cost is O(1), and carried up as a structured "narrow the window" error
+        # at the tool layer (Constraint 3).
+        if n > _MAX_MATERIALIZED_SAMPLES:
+            raise WindowTooLargeError(
+                name,
+                estimated_samples=n,
+                max_samples=_MAX_MATERIALIZED_SAMPLES,
+                span_seconds=span_s,
+            )
 
         # Reproducible noise: seed a private RNG from (global seed, signal id) only.
         rng = random.Random(self.seed * 100_003 + spec.sid)
@@ -131,7 +160,7 @@ class SyntheticReader:
     def describe(self, name: str) -> SignalDescriptor:
         """Unit / typical-range / description metadata for a signal, used by the
         ``list_available_signals`` tool (docs/03)."""
-        if name not in _SIGNALS:
+        if name not in self._available:
             raise UnknownSignalError(name, self.available_signals())
         spec = _SIGNALS[name]
         return SignalDescriptor(

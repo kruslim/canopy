@@ -38,6 +38,10 @@ class CanopyState(BaseModel):
     signals_touched: list[str] = Field(default_factory=list)
     signals_available: list[str] | None = None  # from the last list_available_signals result
     findings: list[Finding] = Field(default_factory=list)
+    # Rules the source could not run (absence of evidence, not evidence of absence). The
+    # Phase 4 reviewer and the ABSENCE_AS_NEGATION defense both need this: an empty findings
+    # list next to a non-empty skipped list means "we didn't look" (docs/03, docs/07).
+    skipped: list[dict[str, str]] = Field(default_factory=list)
 
     # Outcome — exactly one of these is set at END
     answer: DiagnosticAnswer | None = None

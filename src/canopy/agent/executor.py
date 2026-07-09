@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from pydantic import ValidationError
 
+from canopy.agent.tool_schema import inline_schema_defs
 from canopy.model.signals import SignalSource
 from canopy.readers.base import SignalReader
 from canopy.tools.registry import TOOLS, TOOLS_BY_NAME
@@ -53,7 +54,9 @@ class ToolExecutor:
             {
                 "name": spec.name,
                 "description": spec.description,
-                "input_schema": spec.input_model.model_json_schema(),
+                # Inlined ($defs/$ref removed) so provider tool-binding adapters that don't
+                # follow references get a self-contained schema (canopy.agent.tool_schema).
+                "input_schema": inline_schema_defs(spec.input_model.model_json_schema()),
             }
             for spec in TOOLS
         ]

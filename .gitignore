@@ -2,6 +2,9 @@
 data/captures/proprietary/
 *.private.dbc
 
+# ── Secrets — API keys live in .env, never in the tree ──
+.env
+
 # ── Python ──
 __pycache__/
 *.pyc

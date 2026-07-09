@@ -1,0 +1,25 @@
+{
+  "n_traces": 20,
+  "n_reviewers": 1,
+  "inter_human_agreement": null,
+  "judge_human_agreement": 0.85,
+  "judge_agreement_by_error_type": {
+    "hallucinated_value": 1.0,
+    "misread_signal": 1.0,
+    "overconfident": 0.85,
+    "missed_finding": 1.0,
+    "false_refusal": 1.0,
+    "missed_refusal": 1.0,
+    "absence_as_negation": 1.0,
+    "unit_error": 1.0,
+    "point_read_as_series": 1.0
+  },
+  "self_agreement": 0.9,
+  "self_agreement_n": 20,
+  "disagreement_examples": [
+    "cal_overconf_02",
+    "cal_overconf_03",
+    "cal_overconf_04"
+  ],
+  "single_reviewer_note": "Solo project: no reviewer panel exists, so inter-rater agreement cannot be measured. Self-agreement (the same subset scored twice, one week apart) stands in as the ceiling proxy. Ground-truth labels are seeded by hand and firm up as real from_review cases land."
+}

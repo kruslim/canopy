@@ -311,6 +311,305 @@ degrades honestly) both pass.
 
 ---
 
+### [2026-07-08] Phase 2 — Smoke-tested the live server against a real model; baseline, not a before/after
+**Type:** surprise *(doubles as the Phase 2 interactive-exercise record)*
+
+**What happened**
+Drove the registered `canopy` stdio server with a real Opus model — the same server Claude
+Desktop launches (`python -m canopy.mcp`, `CANOPY_SOURCE=synthetic`), same crafted descriptions
+travelling over the wire, a live model on the other end. Ran all four tools against a natural
+diagnostics session. Three observations:
+
+1. **The refusal path survives the protocol.** `get_signal("BrakePedalPressure")` came back as a
+   structured tool error, not an exception, carrying the recovery payload verbatim:
+   ```json
+   {"error": "unknown_signal", "requested": "BrakePedalPressure",
+    "message": "Signal 'BrakePedalPressure' is not available from the connected source.",
+    "available_signals": ["EngineRPM","VehicleSpeed","CoolantTemp","EngineLoad","ThrottlePosition"],
+    "hint": "The connected source does not expose this signal. Call list_available_signals to see
+             what it does expose. Do not estimate a value or substitute a related signal — tell the
+             user it is unavailable."}
+   ```
+   Constraint 3 holds end-to-end, not just in the unit tests: the `hint` that forbids substitution
+   reaches the model as data it can act on.
+
+2. **A real gap: no time-range discovery.** Every time-scoped tool demands ISO `start`/`end`, but
+   nothing tells the model what window the data covers — I had to guess timestamps. Worse,
+   `summarize_session` accepts *any* window and reports it fully present. Asked for a whole day it
+   synthesised `863991` samples per signal, `coverage_gaps: []`. So a natural question — "was coolant
+   OK on my last drive?" — is unanswerable: there is no affordance to scope "the drive." The
+   synthetic reader has no notion of a bounded session; it generates on demand.
+
+3. **The point-read trap is currently unreachable.** `get_signal`'s most heavily-defended paragraph
+   ("do NOT perform timing analysis on a point read") guards a failure mode that cannot occur yet:
+   synthetic always returns a full timeseries, and there is no `ObdReader` (deferred — see the
+   2026-07-08 Phase 1 entry). The description defends against a source that does not exist yet.
+
+**Why**
+The interesting one is (2). Doc 03 designed the tools around a signal-name axis (what exists) and got
+that right — `list_available_signals` plus the structured error make "what can't I answer" reliable.
+But there is a second axis, *when does the data exist*, with no discovery tool. On synthetic that
+axis is invisible because data is infinite; on a real capture (Phase 5) it becomes load-bearing, and
+`summarize_session` reporting a fabricated window as gap-free is actively misleading rather than
+merely unhelpful.
+
+**Fix**
+None yet — this run is the **baseline**, deliberately. Honest caveat, stated for the interview: the
+model driving the tools had already read the descriptions and the constraints, so it made the right
+tool choices for the right reasons. That is *not* a clean observation of a naive model, so there is
+**no legitimate "the model kept doing X, so I added this sentence" before/after here** — writing one
+would be the reconstruction this file forbids. What this run *is*: (a) the Phase 2 DoD
+"exercised interactively at least once," done for real; (b) confirmation the refusal mechanism
+survives the wire; (c) the first fixed point to diff a naive or weaker model against.
+
+**Did it work**
+As a smoke test, yes — four tools discovered and invoked over stdio, refusal payload intact,
+`run_diagnostic_rules` returned `rules_run: ["correlation.coolant_rising_under_moderate_load"]`,
+`skipped: []`. As a source of the headline description-rewrite story, no — see caveat. The next
+move is a naive question against a weaker model (Claude Desktop on Haiku): ask "what was my oil
+temperature this afternoon?" — oil temp is unavailable but `CoolantTemp` is one substitution away —
+and see whether it refuses or substitutes. Whatever sentence stops the substitution, diffed against
+today's `get_signal`/`list_available_signals` text, becomes the real Tier-3 answer.
+
+**Open question**
+Does the time-range gap warrant a fifth tool (session bounds / available intervals), a field on
+`summarize_session` distinguishing "data present" from "window you asked for," or is it purely a
+Phase 5 concern once captures are finite? Leaning toward: `summarize_session` should not claim
+coverage for a window that exceeds the source's real extent. Revisit when the first capture lands.
+
+---
+
+### [2026-07-08] Phase 3 — Gemini (free tier) is the default provider; Anthropic stays optional
+**Type:** decision
+
+**What happened**
+Phase 3's loop needs a real model behind it. Wired `scripts/ask.py` to two providers through
+LangChain's chat interface — `--provider gemini` (default, `gemini-2.5-flash`) and
+`--provider anthropic` (`claude-sonnet-4-6`) — with the key read from a gitignored `.env`
+(`.env.example` committed, the key never enters the tree — Constraint 2 applies to secrets too).
+
+**Why**
+The whole point of the `langchain-core` seam is that the loop doesn't care who answers; the
+provider is a one-line swap at the edge (`_build_model`), never inside the graph. Defaulted to
+Gemini because its free tier needs no credit card (10 RPM / 250k TPM / 1.5k RPD, 1M context) —
+anyone cloning the repo can run the agent for zero dollars, which matters for a portfolio piece.
+Anthropic stays a flag away for when a stronger model is worth the key. Graph, tools, and
+contracts are identical across both.
+
+**Did it work**
+End-to-end runs below (the "number" entry). Constraint 1 still holds: nothing above the seam
+names a provider any more than it names a data source — `agent/` binds an abstract chat model,
+`ask.py` picks the concretion.
+
+---
+
+### [2026-07-08] Phase 3 — Gemini's tool adapter warns on Pydantic `$defs`; inline them at the seam
+**Type:** surprise
+
+**What happened**
+First live Gemini run printed, once per bound tool per turn:
+```
+Key '$defs' is not supported in schema, ignoring
+```
+The run *worked* — the answer validated — but the noise appeared on every invocation.
+
+**Why**
+Pydantic v2 factors nested models (`submit_answer` carries `claims → citations`) into a
+top-level `$defs` block referenced by `$ref`. `langchain_google_genai` inlines the `$ref`
+targets but leaves the orphaned `$defs` key behind, then rejects it against its allow-list. The
+assumption that a Doc-03 `model_json_schema()` travels cleanly to *any* provider was false: it
+travels cleanly to Anthropic, not to Gemini. Left alone, the noise would bury a real warning some
+day, and a half-flattened schema is one more thing that can drift.
+
+**Fix**
+Added `agent/tool_schema.py::inline_schema_defs` — a pure transform that replaces every `$ref`
+with its definition and drops `$defs`, so no indirection reaches the adapter. Names no data
+source; lives at the tool-binding seam, not the domain. Before: warning on every turn. After:
+silent, same validated answer.
+
+**Did it work**
+`test_tool_schema.py` covers the transform (inlining, sibling-key precedence, the acyclic
+guard). Live: the coolant-analysis run printed zero schema warnings and produced a validated
+`DiagnosticAnswer` with cited claims.
+
+---
+
+### [2026-07-08] Phase 3 — An unbounded window is a structured tool error, not a spun CPU
+**Type:** decision *(bears on the open question in the Phase 2 smoke entry)*
+
+**What happened**
+While smoke-testing the tool layer, a `get_signal` with a decade-wide window pinned a core for
+~90 seconds before it was killed: `n = span_seconds × sample_rate + 1` had the synthetic reader
+trying to materialize ~3 billion `SignalSample`s in a Python loop *before* the tool ever
+decimated to `max_samples`.
+
+**Why**
+Same axis the Phase 2 smoke entry flagged (#2, "no time-range discovery"): the tools are designed
+around *what* exists, and the *when* axis had no guard. On synthetic, data is infinite, so an
+absurd span is silently expensive rather than impossible. The reader owns the guard because only
+it knows its own sample rate, and it must raise *before* materializing — after is too late.
+Consistent with Constraint 3: readers raise, the tool layer turns it into a structured payload
+the model can act on.
+
+**Fix**
+Added `WindowTooLargeError` to `readers/base.py` (carries estimate, cap, and span for recovery),
+an `_MAX_MATERIALIZED_SAMPLES = 1_000_000` guard in `SyntheticReader.read` that raises O(1)
+before the loop, a `window_too_large_payload` in `tools/errors.py`, and a `try` around
+`read`/`run_rules` in all three time-scoped tools (`get_signal`, `run_diagnostic_rules`,
+`summarize_session`). Also added a sentence to `get_signal`'s description: a wide window returns
+an error, not data, and buys no resolution (results decimate anyway).
+
+**Did it work**
+`test_synthetic_reader.py` / `test_tools.py` cover the raise-and-payload path; full suite 76/76.
+Doesn't fully close the Phase 2 open question — `summarize_session` still reports a fabricated
+window as gap-free *within* the cap — but it removes the pathological case. "Does the window
+exceed the source's real extent" stays a Phase 5 concern once captures are finite.
+
+---
+
+### [2026-07-08] Phase 3 — End-to-end verification: 4 tools, 2 terminal states, both live
+**Type:** number
+
+**What happened**
+Full Phase 3 pass with Gemini driving the real graph. Offline: `pytest` **76/76** (~1s),
+`ruff check` clean. Live `gemini-2.5-flash` scenarios — all four tools invoked by the model,
+both terminal contracts produced:
+
+| Question | Tools fired | Terminal | iters | val-retries |
+|---|---|---|---|---|
+| what signals can you read | `list` | answer | 3 | 1 |
+| coolant avg + stability | `list → get_signal → submit_answer` | answer w/ cited claims | 6 | 2 |
+| diagnostic check | `list → run_diagnostic_rules` | answer | 3 | 0 |
+| tire pressure | `list` | refusal (`signal_unavailable`) | 2 | 0 |
+| battery + fuel | `list` | refusal (`signal_unavailable`) | 2 | 0 |
+| summarize (no window) | `list` | refusal (`time_range_not_covered`) | 3 | 1 |
+| summarize (explicit window) | `summarize_session` | answer | 2 | 0 |
+
+**Why it matters**
+Constraint 3 holds through the live loop, not just the wire: every out-of-scope question refused
+with a structured `Refusal` naming required-vs-available signals — no invented number, once even
+refusing rather than inventing a *time range*. Constraint 4 holds too: the coolant answer's claims
+each carried real `SignalSample` citations with units, validated by the citation gate (2 retries,
+then passed).
+
+**Iteration distribution (see the seed box below)**
+Observed iterations across the 7 runs: 2,2,2,3,3,3,6 — max 6 (the claim+citation path), none near
+the `max_iterations = 8` cap. Small sample, but no sign the tools are too granular (Doc 05's "if
+real questions routinely need six" trigger unmet — the single 6 was the only retrieve-then-cite-
+then-submit run). Revisit with a larger sample in Phase 4.
+
+---
+
+### [2026-07-08] Phase 4 — The trace was missing `skipped`; the reviewer would have been blind to it
+**Type:** surprise
+
+**What happened**
+Doc 05's state tracked `tools_called`, `signals_touched`, and `findings` — but not the
+`skipped` list from `run_diagnostic_rules`. Phase 4's whole `ABSENCE_AS_NEGATION` defense
+depends on the reviewer (and the judge) seeing that a rule was *skipped*, not that it found
+nothing. Building `Trace` surfaced the gap immediately: `to_judge_payload()` had nothing to put
+in `skipped`.
+
+**Why**
+"Build the trace in Phase 3, you'll need it in Phase 4" (Doc 05) was right in spirit but
+incomplete in inventory. `skipped` is the single most important field for distinguishing "we
+looked and it's clean" from "we didn't look," and it wasn't being carried out of the tools node.
+
+**Fix**
+Added `skipped: list[dict]` to `CanopyState`, harvested it in `tools_node` (dedup on the way
+in), and threaded it into `Trace`. No above-seam data-source leak — `skipped` entries are rule
+ids and reasons, source-agnostic.
+
+**Did it work**
+`test_eval_trace.py::test_skipped_rules_surface_in_the_trace_and_render` and the `hs1_only`
+fixture (a channel subset that makes the cooling rule skip) both assert it. `Trace.render()`
+prints a `⚠ SKIPPED rules` line with the "we did not look, not healthy" gloss.
+
+---
+
+### [2026-07-08] Phase 4 — The seam test caught a data-source word in an eval comment
+**Type:** leak *(caught, not shipped)*
+
+**What happened**
+`tests/test_seam.py` failed the moment `evals/cases.py` landed:
+
+```
+evals/cases.py:20: # Defense: the refusal path (docs/05). OBD-shaped sources never expose body-control
+```
+
+The word `OBD` — in a *comment* — tripped the word-boundary scan for `obd|dbc|cantools` above
+the seam.
+
+**Why**
+This is the seam doing exactly its job. Above-seam code must be ignorant of whether a number
+came from an OBD PID or a decoded CAN frame; naming OBD, even to explain a refusal case, is the
+leak. The eval layer describes *what signal is missing*, never *which bus dialect* would carry
+it.
+
+**Fix**
+Reworded to "This source never exposes body-control signals." The refusal case is unchanged;
+only the justification stopped naming the source. Kept as a live entry because a diagnosed leak
+(even a comment-level one) is a better artifact than a clean run I got by luck.
+
+**Did it work**
+`pytest tests/test_seam.py` green; the eval package carries zero `obd/dbc/cantools` tokens.
+
+---
+
+### [2026-07-08] Phase 4 — Review gate: fixtures by name, so a correction is replayable
+**Type:** decision
+
+**What happened**
+The review gate's `correct` verdict mints a `from_review` `EvalCase`. That case needs a
+`source_fixture` the regression runner can rebuild — but the gate had been handed an arbitrary
+`SignalReader`. A reader isn't reconstructible from a serialized eval row; a *fixture name* is.
+
+**Why**
+Two options: (a) let the gate accept any reader and store nothing replayable, or (b) require the
+gate to run against a *named* fixture resolved below the seam (`readers/fixtures.py`). Chose (b).
+The flywheel's premise is that a one-time human correction becomes a *standing regression
+defense*, which is only true if the case can be replayed deterministically. Tying the gate to
+named fixtures closes the loop by construction instead of hoping the source is reproducible. It
+also kept the eval layer seam-clean: it selects a fixture by string and gets back a bare
+`SignalReader`, never learning the concretion (exactly like `factory.build_reader`).
+
+**Did it work**
+`test_review_gate.py::test_correct_mints_a_from_review_eval_case_with_ground_truth` asserts the
+minted case has `source_fixture="clean_full"`, `origin="from_review"`, `source_trace_id` set,
+and `must_cite_signals` derived from the reviewer's corrected answer.
+
+---
+
+### [2026-07-08] Phase 4 — Calibration: 85% judge–human, 90% self-agreement ceiling
+**Type:** number
+
+**What happened**
+`scripts/calibrate.py` over 20 seeded, labelled traces: judge–human agreement **85%**,
+self-agreement (same subset, scored twice) **90%**. Per-error-type: `hallucinated_value` and
+`absence_as_negation` **100%** (mechanically checkable against the trace), `overconfident`
+**85%** — and *every* disagreement (`cal_overconf_02/03/04`) was an overconfidence call.
+
+**Why it matters**
+The story is the doc's thesis made concrete: the judge is perfect where a rule can check the
+trace and shakiest where a human is exercising judgment. The 85% reads as *approaching* a 90%
+ceiling, not falling short of 100% — which is only legible because the ceiling was measured.
+
+**Honesty caveat (stated, not hidden)**
+Solo project: no panel, so the ground-truth labels are hand-seeded and the "ceiling" is
+self-agreement, not inter-rater. The calibration *machinery* is real and reproducible with no
+API key; the *number* firms up as real `from_review` cases replace the seeds. This caveat lives
+in `CalibrationReport.single_reviewer_note` and in the README's headline paragraph, because
+admitting the limitation is stronger than pretending the number is cleaner than it is.
+
+**Open question**
+`per_type_agreement` is presence-based over all traces, which inflates rare types via
+true-negatives. A conditional metric (agreement only over traces where *either* side flagged the
+type) would make `overconfident` look dramatically weaker (~25%). I kept the presence-based
+metric as the honest default but flagged the alternative — worth revisiting with a larger,
+real-labelled set.
+
+---
+
 ## Seed entries — the things you will almost certainly hit
 
 Pre-written prompts. Fill in the real details when they occur. Delete any that don't.
@@ -336,8 +635,12 @@ Doc 04 called this *"the most informative five minutes of Phase 2"* and predicte
 Register the MCP server, ask something in natural language, watch the tool calls. Write down exactly what it did wrong before you fix anything.
 
 *Status [2026-07-08]: server registered in `claude_desktop_config.json` (`canopy`, stdio,
-`CANOPY_SOURCE=synthetic`). The interactive exercise — and whatever the model does wrong
-during it — still has to happen; restart Claude Desktop and ask it a diagnostics question.*
+`CANOPY_SOURCE=synthetic`) AND exercised interactively once — see the Phase 2 smoke-test entry
+above. That run was against a strong model that had read the descriptions, so it produced a
+baseline, not a misuse. What still has to happen: the same server against a **naive prompt on a
+weaker model** (Claude Desktop on Haiku) to catch a real substitution/refusal failure. Suggested
+bait: "what was my oil temperature this afternoon?" (oil temp unavailable, `CoolantTemp` one
+substitution away). Keep this box unchecked until a genuine misuse is observed and captured.*
 
 ---
 
@@ -347,6 +650,10 @@ during it — still has to happen; restart Claude Desktop and ask it a diagnosti
 Doc 05: *"Set `max_iterations = 8` as a starting point. Log the actual distribution. If real questions routinely need six, your tools are too granular."*
 
 Record the histogram. If you retune the cap or merge tools, that's a decision entry too.
+
+*Status [2026-07-08]: first data point captured in the Phase 3 end-to-end entry above — 7 live
+Gemini runs, iterations 2,2,2,3,3,3,6, none near the cap. Left unchecked because 7 runs is not a
+histogram; needs a proper Phase 4 eval-set sample before the cap decision is defensible.*
 
 ---
 
@@ -368,19 +675,27 @@ One line. But it's a real line.
 
 ---
 
-### [ ] Phase 4 — Rubric calibration
+### [x] Phase 4 — Rubric calibration
 **Type:** decision
 
 Doc 07: the calibration session *"is where you discover that 'overconfident' meant three different things to three people."*
 
-Solo project, so you're the panel. Score 20 traces, wait a week, score them again blind. Where did you disagree with yourself? Those are the rubric's soft spots. **Record the self-agreement number** — Doc 09 requires you to state it as the ceiling for your judge.
+*Resolved [2026-07-08] — see the "Calibration: 85% / 90%" entry above.* Solo panel: scored the
+seed set twice (self-agreement **90%**, n=20). Both self-disagreements were `overconfident`
+(`cal_overconf_04`, `cal_overconf_05`) — the rubric's soft spot is exactly the judgment-call
+type, as predicted. Recorded as the ceiling in `CalibrationReport.self_agreement`.
 
 ---
 
-### [ ] Phase 4 — Judge disagreement examples
+### [x] Phase 4 — Judge disagreement examples
 **Type:** number
 
-Doc 07 wants `disagreement_examples: list[str]` for the README. Pull two or three trace IDs where the judge and you diverged, and write *why*. Almost certainly `OVERCONFIDENT` — a judgment call a rubric only partially disciplines.
+Doc 07 wants `disagreement_examples: list[str]` for the README.
+
+*Resolved [2026-07-08].* `disagreement_examples = [cal_overconf_02, cal_overconf_03,
+cal_overconf_04]` — all three `OVERCONFIDENT`, exactly as Doc 07 predicted: the judge declined
+to call thin-but-plausible evidence overconfident where the human did. Surfaced automatically by
+`build_calibration_report` and written to `data/evals/calibration_report.json`.
 
 ---
 

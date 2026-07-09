@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 import pytest
 
 from canopy.model.signals import SignalSource
-from canopy.readers.base import SignalReader, UnknownSignalError
+from canopy.readers.base import SignalReader, UnknownSignalError, WindowTooLargeError
 from canopy.readers.synthetic import SyntheticReader
 
 T0 = datetime(2026, 1, 1, 0, 0, 0)
@@ -68,3 +68,19 @@ def test_unknown_signal_raises_with_recovery_info():
 def test_unknown_anomaly_rejected():
     with pytest.raises(ValueError):
         SyntheticReader(anomaly="does_not_exist")
+
+
+def test_oversized_window_raises_before_materializing():
+    # A decade-wide window at 10 Hz would build ~3 billion samples; the guard raises first.
+    reader = SyntheticReader()
+    with pytest.raises(WindowTooLargeError) as exc:
+        reader.read("EngineRPM", T0, T0 + timedelta(days=3650))
+    assert exc.value.requested == "EngineRPM"
+    assert exc.value.estimated_samples > exc.value.max_samples
+
+
+def test_realistic_window_is_under_the_cap():
+    # A full hour at 10 Hz is 36k samples — comfortably within the limit, no raise.
+    reader = SyntheticReader()
+    series = reader.read("EngineRPM", T0, T0 + timedelta(hours=1))
+    assert len(series.samples) == 36_001

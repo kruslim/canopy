@@ -10,6 +10,8 @@ dependencies = [
     "langgraph>=1.2.8",
     "langchain-core>=1.4.9",
     "langchain-anthropic>=1.4.8",
+    "langchain-google-genai>=2.1.0",
+    "python-dotenv>=1.0",
 ]
 
 [project.optional-dependencies]
@@ -37,3 +39,10 @@ select = ["E", "F", "I", "UP", "B"]
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-q"
+filterwarnings = [
+    # LangGraph's MemorySaver msgpack-serializes our pydantic state (ReviewState carries a
+    # Trace and SignalSource) across the review-gate interrupt. It warns that deserializing
+    # unregistered types will be blocked in a future release; it still round-trips today, and
+    # the review gate persists only inside a single process. Filtered to keep output readable.
+    "ignore:Deserializing unregistered type:UserWarning",
+]

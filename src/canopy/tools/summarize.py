@@ -17,7 +17,8 @@ from pydantic import BaseModel
 
 from canopy.domain.registry import run_rules
 from canopy.model.signals import SignalSample, SignalSource
-from canopy.readers.base import SignalReader
+from canopy.readers.base import SignalReader, WindowTooLargeError
+from canopy.tools.errors import window_too_large_payload
 
 DESCRIPTION = (
     "Returns a structural overview of a data session: which signals are present, how many "
@@ -118,20 +119,23 @@ def find_coverage_gaps(
 def summarize_session(
     reader: SignalReader,
     inp: SummarizeSessionInput,
-) -> SummarizeSessionOutput:
+) -> SummarizeSessionOutput | dict:
     sample_counts: dict[str, int] = {}
     signals_present: list[str] = []
     coverage_gaps: list[CoverageGap] = []
 
-    for name in reader.available_signals():
-        series = reader.read(name, inp.start, inp.end)
-        count = len(series.samples)
-        sample_counts[name] = count
-        if count:
-            signals_present.append(name)
-        coverage_gaps.extend(find_coverage_gaps(name, series.samples, inp.start, inp.end))
+    try:
+        for name in reader.available_signals():
+            series = reader.read(name, inp.start, inp.end)
+            count = len(series.samples)
+            sample_counts[name] = count
+            if count:
+                signals_present.append(name)
+            coverage_gaps.extend(find_coverage_gaps(name, series.samples, inp.start, inp.end))
 
-    result = run_rules(reader, inp.start, inp.end)
+        result = run_rules(reader, inp.start, inp.end)
+    except WindowTooLargeError as exc:
+        return window_too_large_payload(exc)
     finding_counts = {"violation": 0, "warning": 0, "info": 0}
     for finding in result.findings:
         finding_counts[finding.severity] += 1

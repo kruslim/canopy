@@ -125,6 +125,12 @@ class RefusalPayload(BaseModel):
     )
 
 
+# The exact summary of a code-built degraded answer. Exposed as a constant so the Phase 4
+# trace can classify an outcome as "degraded" (exhaustion) vs. a genuine "answer" without
+# re-deriving the string in two places (evals/trace.py).
+DEGRADED_SUMMARY = "The agent could not produce a valid structured answer."
+
+
 def degraded_answer(
     question: str, signals_examined: list[str], source: SignalSource
 ) -> DiagnosticAnswer:
@@ -134,7 +140,7 @@ def degraded_answer(
     Phase 4 review queue like any other answer and becomes an eval case (docs/06).
     """
     return DiagnosticAnswer(
-        summary="The agent could not produce a valid structured answer.",
+        summary=DEGRADED_SUMMARY,
         claims=[],
         findings_referenced=[],
         signals_examined=signals_examined,

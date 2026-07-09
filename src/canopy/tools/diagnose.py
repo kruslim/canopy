@@ -19,7 +19,8 @@ from pydantic import BaseModel, Field
 
 from canopy.domain.registry import run_rules
 from canopy.model.findings import Finding
-from canopy.readers.base import SignalReader
+from canopy.readers.base import SignalReader, WindowTooLargeError
+from canopy.tools.errors import window_too_large_payload
 
 DESCRIPTION = (
     "Runs the domain diagnostic rule set over a time range and returns structured "
@@ -56,8 +57,11 @@ class RunDiagnosticRulesOutput(BaseModel):
 def run_diagnostic_rules(
     reader: SignalReader,
     inp: RunDiagnosticRulesInput,
-) -> RunDiagnosticRulesOutput:
-    result = run_rules(reader, inp.start, inp.end, inp.rule_ids)
+) -> RunDiagnosticRulesOutput | dict:
+    try:
+        result = run_rules(reader, inp.start, inp.end, inp.rule_ids)
+    except WindowTooLargeError as exc:
+        return window_too_large_payload(exc)
     return RunDiagnosticRulesOutput(
         findings=result.findings,
         rules_run=result.rules_run,

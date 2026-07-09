@@ -18,8 +18,8 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from canopy.model.signals import SignalSeries
-from canopy.readers.base import SignalReader, UnknownSignalError
-from canopy.tools.errors import unknown_signal_payload
+from canopy.readers.base import SignalReader, UnknownSignalError, WindowTooLargeError
+from canopy.tools.errors import unknown_signal_payload, window_too_large_payload
 
 DESCRIPTION = (
     "Retrieves one signal over a time range, returned as a timeseries with explicit units "
@@ -31,7 +31,10 @@ DESCRIPTION = (
     "NOT perform timing analysis on a point read — check actual_sample_rate_hz before "
     "reasoning about how a signal changed over time.\n\n"
     "Results are downsampled to max_samples. If `truncated` is true, the series is a "
-    "decimation of the full data and fine timing detail may be lost."
+    "decimation of the full data and fine timing detail may be lost.\n\n"
+    "Keep the time range bounded to the interval you actually need. An excessively wide "
+    "window returns a window_too_large error, not data — and because results are "
+    "downsampled to max_samples anyway, a wider window buys no extra resolution."
 )
 
 
@@ -88,6 +91,8 @@ def get_signal(reader: SignalReader, inp: GetSignalInput) -> GetSignalOutput | d
         series = reader.read(inp.name, inp.start, inp.end)
     except UnknownSignalError as exc:
         return unknown_signal_payload(exc)
+    except WindowTooLargeError as exc:
+        return window_too_large_payload(exc)
 
     # Rate is computed from the full series *before* decimation so it reflects the real
     # source cadence, not the downsampled spacing. Null signals a point read.
