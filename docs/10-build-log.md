@@ -236,6 +236,81 @@ entry.
 
 ---
 
+### [2026-07-08] Phase 3 — Agent executes tools in-process, not over an MCP stdio client
+**Type:** decision
+
+**What happened**
+Doc 05's node listing says the `tools` node "executes requested tools via the MCP client."
+The implemented node calls the tool layer directly instead: `_ToolSpec`/`_TOOLS` were
+extracted out of `mcp/server.py` into `tools/registry.py` (one authority for
+name/description/schema/handler), and both the MCP server and the agent's `ToolExecutor`
+consume that registry.
+
+**Why**
+Spawning a stdio subprocess and running an async MCP session inside a LangGraph node buys
+protocol fidelity the loop doesn't need and costs test hermeticity — every loop test would
+drag in a subprocess and an event loop. What actually matters is that the agent and the
+server can never drift: same names, same descriptions, same schemas, same dispatch
+semantics (invalid arguments and unknown signals come back as structured error payloads in
+both). The shared registry guarantees that structurally. The MCP transport itself is
+already exercised end-to-end by the Phase 2 tests and `scripts/smoke_mcp.py`. If a real
+remote-tool deployment arrives later, `ToolExecutor` is the single seam to swap.
+
+**Did it work**
+The whole Phase 3 loop suite runs in-process with a scripted model — no network, no key,
+sub-second. `test_mcp_server.py` still passes against the registry-backed server.
+
+**Open question**
+An MCP-client-backed `ToolExecutor` would make the "agent ↔ server over the wire" demo
+more literal. Worth doing as a follow-up if an interviewer is likely to probe it.
+
+---
+
+### [2026-07-08] Phase 3 — The forced final turn keeps `submit_answer`/`refuse` bound
+**Type:** decision
+
+**What happened**
+Doc 05 says the iteration cap triggers "one final turn with the tools *unbound*." Implemented
+as: the four *data* tools unbind, but the two virtual channels (`submit_answer`, `refuse`)
+stay bound.
+
+**Why**
+Structured output arrives through the tool-call channel (Doc 06's preferred mechanism). If
+*every* tool unbinds, the forced turn can only produce prose — which then fails validation
+and burns the retry budget on a turn we ourselves forced. Keeping the answer channels bound
+preserves both properties at once: the model can retrieve nothing further, and the degraded
+honest answer still lands as a validated `DiagnosticAnswer` with `could_not_determine`
+filled. "Tools unbound" is read as "data acquisition unbound."
+
+**Did it work**
+`test_iteration_cap_forces_a_final_turn_with_data_tools_unbound` asserts the final
+invocation carried exactly `[submit_answer, refuse]` and that the answer validated.
+
+---
+
+### [2026-07-08] Phase 3 — Prose-where-an-answer-belongs consumes the validation-retry budget
+**Type:** decision
+
+**What happened**
+Doc 05's graph has exactly four nodes, and its routing assumes the model either calls tools,
+answers, or refuses. A real model has a fourth move: reply in plain prose. That case is
+routed to the `validate` node, which treats "no structured answer" as a validation failure —
+feedback message, bounded retry, degrade on exhaustion.
+
+**Why**
+The alternative was a fifth "nudge" node or an unbounded re-prompt loop. Folding it into
+validation keeps the graph at the four specced nodes and — more importantly — keeps *every*
+malformed-final-output path behind one bounded counter. There is now no shape of model
+misbehavior at answer time that can loop forever or crash: tool-call answers validate,
+prose gets two chances to become structured, then the code-built degraded answer ships.
+
+**Did it work**
+`test_prose_final_reply_is_nudged_into_the_structured_channel` (recovers on retry) and
+`test_retry_exhaustion_degrades_to_a_code_built_answer_not_an_exception` (never recovers,
+degrades honestly) both pass.
+
+---
+
 ## Seed entries — the things you will almost certainly hit
 
 Pre-written prompts. Fill in the real details when they occur. Delete any that don't.

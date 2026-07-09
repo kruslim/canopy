@@ -8,10 +8,10 @@ architecture. This file states the **hard constraints** — violating one is a b
 not a style choice.
 
 ## Phase discipline
-Ship each phase completely before the next (docs/00). We are at **Phase 0**
-(foundation: normalizer + synthetic reader + rules). **No LLM code exists in the
-repo until Phase 3** — do not add `langchain`, `langgraph`, `anthropic`, or model
-calls before then.
+Ship each phase completely before the next (docs/00). We are at **Phase 3**
+(agent: LangGraph loop + structured outputs — `langgraph`/`langchain`/`anthropic`
+are now legitimately in the tree). Phase 4 (evals & HITL) has not started: no
+review-queue, judge, or eval-harness code until then.
 
 ## Data sources & rig
 The real-world inputs the readers ultimately model (below the seam — this context

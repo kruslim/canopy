@@ -23,77 +23,21 @@ from __future__ import annotations
 
 import json
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
 
 import mcp.types as types
 from mcp.server.lowlevel import Server
 from mcp.server.stdio import stdio_server
 from mcp.shared.exceptions import McpError
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 
 from canopy.readers import build_reader
 from canopy.readers.base import SignalReader
-from canopy.tools import (
-    GetSignalInput,
-    ListAvailableSignalsInput,
-    RunDiagnosticRulesInput,
-    SummarizeSessionInput,
-    get_signal,
-    list_available_signals,
-    run_diagnostic_rules,
-    summarize_session,
-)
-from canopy.tools.diagnose import DESCRIPTION as DIAGNOSE_DESCRIPTION
-from canopy.tools.get_signal import DESCRIPTION as GET_SIGNAL_DESCRIPTION
-from canopy.tools.list_signals import DESCRIPTION as LIST_SIGNALS_DESCRIPTION
-from canopy.tools.summarize import DESCRIPTION as SUMMARIZE_DESCRIPTION
+
+# The four tools in canonical wire order come from the shared registry (one authority for
+# name/description/schema/handler, also consumed by the agent's tool node — docs/05).
+from canopy.tools.registry import TOOLS, TOOLS_BY_NAME
 
 SERVER_NAME = "canopy"
-
-# A handler takes the injected reader plus a validated input model and returns either a
-# Pydantic output model (success) or a plain ``dict`` (a structured tool-error payload, e.g.
-# ``unknown_signal``). That dict/model split is the whole tool-error signal — see _dispatch.
-_ToolFn = Callable[[SignalReader, BaseModel], BaseModel | dict]
-
-
-@dataclass(frozen=True)
-class _ToolSpec:
-    name: str
-    description: str
-    input_model: type[BaseModel]
-    invoke: _ToolFn
-
-
-# The four tools, in the cost order the model should read them (docs/03): cheap orienting
-# calls first, expensive interpretation last. Names are the canonical wire names from docs/04.
-_TOOLS: tuple[_ToolSpec, ...] = (
-    _ToolSpec(
-        name="list_available_signals",
-        description=LIST_SIGNALS_DESCRIPTION,
-        input_model=ListAvailableSignalsInput,
-        invoke=list_available_signals,
-    ),
-    _ToolSpec(
-        name="summarize_session",
-        description=SUMMARIZE_DESCRIPTION,
-        input_model=SummarizeSessionInput,
-        invoke=summarize_session,
-    ),
-    _ToolSpec(
-        name="get_signal",
-        description=GET_SIGNAL_DESCRIPTION,
-        input_model=GetSignalInput,
-        invoke=get_signal,
-    ),
-    _ToolSpec(
-        name="run_diagnostic_rules",
-        description=DIAGNOSE_DESCRIPTION,
-        input_model=RunDiagnosticRulesInput,
-        invoke=run_diagnostic_rules,
-    ),
-)
-
-_TOOLS_BY_NAME: dict[str, _ToolSpec] = {spec.name: spec for spec in _TOOLS}
 
 
 def _text_result(payload: dict, *, is_error: bool) -> types.ServerResult:
@@ -143,14 +87,14 @@ def build_server(reader: SignalReader) -> Server:
                 description=spec.description,
                 inputSchema=spec.input_model.model_json_schema(),
             )
-            for spec in _TOOLS
+            for spec in TOOLS
         ]
 
     async def _dispatch(req: types.CallToolRequest) -> types.ServerResult:
         name = req.params.name
         arguments = req.params.arguments or {}
 
-        spec = _TOOLS_BY_NAME.get(name)
+        spec = TOOLS_BY_NAME.get(name)
         if spec is None:
             # Protocol error: the client invoked a tool that was never advertised. The model
             # cannot act on this, so it must not reach the model as a tool result — raise and
