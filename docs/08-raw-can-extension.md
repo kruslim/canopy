@@ -166,6 +166,8 @@ Add eval cases (Doc 07) with a CAN source and a signal that *isn't* in the DBC:
 | Camera timing, CAN | `can_log` | answer, cites body-control signal |
 | Signal absent from DBC, CAN | `can_log` | refusal, `signal_unavailable` |
 | Signal in DBC, absent from capture | `can_log` | refusal, `time_range_not_covered` |
+| Signal on a channel the DBC references but this capture never connected (e.g. `HS2` absent) | `can_log` | refusal, `channel_not_captured` |
+| Name defined on two channels, request unqualified | `can_log` | refusal, `signal_unavailable`, names both channels |
 
 That third row is why `available_signals()` reports capture contents rather than DBC contents. That fourth row is a new `refusal_reason` — Doc 05 defined `time_range_not_covered` and you finally have a reader that can produce it.
 

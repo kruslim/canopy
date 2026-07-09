@@ -60,6 +60,13 @@ class SignalSample(BaseModel):
     unit: str = Field(..., description="Engineering unit, e.g. 'rpm', 'km/h', 'degC'")
     timestamp: datetime
     source: SignalSource
+    channel: str | None = Field(
+        default=None,
+        description=(
+            "Bus channel the sample came from, e.g. 'HS1', 'HS2'. None for a "
+            "single-channel source (OBD, or a capture with one channel)."
+        ),
+    )
     quality: Literal["good", "estimated", "stale"] = "good"
 ```
 
@@ -72,6 +79,7 @@ class SignalSeries(BaseModel):
     name: str
     unit: str
     source: SignalSource
+    channel: str | None = None   # the channel every sample was read from; None = single-channel
     samples: list[SignalSample]
 
     @property
@@ -84,7 +92,7 @@ class SignalSeries(BaseModel):
         return len(self.samples) <= 1
 ```
 
-### The three design decisions embedded here, and their justifications
+### The four design decisions embedded here, and their justifications
 
 **1. Time-ranged is the general case; "now" is a special case.**
 
@@ -102,6 +110,10 @@ Vehicle data is a minefield of km/h vs mph, °C vs °F, rpm vs rad/s. A bare flo
 
 OBD polling degrades as you add PIDs — values go stale. CAN captures have dropouts. A `stale` marker lets the domain layer and, ultimately, the agent reason about confidence rather than treating every number as gospel.
 
+**4. `channel` is on the sample because a bus has more than one wire.**
+
+A vehicle carries several physical CAN buses, and a capture tool (Vector CANalyzer, for us) records them as separate channels — `HS1`, `HS2`, and so on. The port you connect to may expose all of them or only a subset, so channel presence is *discovered, not assumed.* `channel` is `None` for a single-channel source (OBD, or a one-channel capture) and carries the channel id otherwise. Two consequences the layers above must handle: the same canonical name can appear on more than one channel, and a channel the DBC references may simply not have been connected during a given capture. Keeping `channel` in the payload is what lets those cases surface as disambiguation and refusal (Docs 03, 05) rather than as a silently-picked wrong number.
+
 ---
 
 ## The data-access interface
@@ -116,9 +128,11 @@ from datetime import datetime
 class SignalReader(Protocol):
     """Implemented by ObdReader, CanLogReader, SyntheticReader."""
 
-    def available_signals(self) -> list[str]:
-        """Canonical names this reader can produce. The agent needs this
-        to know what it cannot answer."""
+    def available_signals(self) -> list[tuple[str, str | None]]:
+        """(name, channel) pairs this reader can produce. `channel` is None for
+        a single-channel source. The agent needs this to know what it cannot
+        answer — and, on a multi-channel bus, on which channel it lives. A name
+        that appears with more than one channel is ambiguous until qualified."""
         ...
 
     def read(
@@ -127,7 +141,8 @@ class SignalReader(Protocol):
         start: datetime,
         end: datetime,
     ) -> SignalSeries:
-        """Raises UnknownSignalError if name not in available_signals()."""
+        """Raises UnknownSignalError if name matches no available (name, channel)
+        pair."""
         ...
 ```
 
@@ -140,6 +155,11 @@ Three implementations, built in this order:
 | `CanLogReader` | 5 | `cantools` + open DBC + logged capture |
 
 **`SyntheticReader` is not a toy.** It is the reader you develop Layers 2–6 against. If your architecture requires a dongle to test, the architecture is wrong. It also becomes your eval fixture in Phase 4, because it is deterministic — you can generate a capture with a known anomaly at a known timestamp and assert the agent finds it.
+
+**Multi-channel `.asc` emission.** Beyond generating in-memory `SignalSeries`, `SyntheticReader` also emits a Vector-style `.asc` capture — the ASCII CAN log CANalyzer produces — with frames tagged across more than one channel (`HS1`, `HS2`, ...). This gives Phase 5's `CanLogReader` (Doc 08) a deterministic, hardware-free fixture that exercises the parts OBD never touches: channel columns, per-channel signal presence, and DBC decoding. Two things the generator plants on purpose:
+
+- **A subset of connected channels.** Emit frames on, say, `HS1` and `HS2` but leave a DBC-referenced channel absent, so the "channel referenced by the DBC but never captured" refusal path (Docs 05, 08) has a fixture to fire against.
+- **One deliberately wrong-endian signal.** Encode exactly one signal with the byte order flipped. Decoded, its values fall outside the DBC-declared min/max, so the decode-gate range check (Doc 08) must raise `DecodeError` on that signal **and only that signal**. A fixture the reader is required to *reject* is as important as one it accepts — it is the only way to prove the gate actually fires rather than passing plausible garbage upward.
 
 ---
 

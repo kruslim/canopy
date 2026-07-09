@@ -178,6 +178,7 @@ class Refusal(BaseModel):
         "signal_unavailable",
         "insufficient_sample_rate",
         "time_range_not_covered",
+        "channel_not_captured",
     ]
     source_connected: SignalSource
     signals_required: list[str]

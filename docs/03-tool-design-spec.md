@@ -118,6 +118,8 @@ class GetSignalOutput(BaseModel):
 > Note that different data sources have very different sample rates. An OBD-II source is request-response and typically returns a **single sample** (a "point read"), with `actual_sample_rate_hz` set to null. A CAN log returns a true timeseries, often at hundreds of hertz. **Do not perform timing analysis on a point read** — check `actual_sample_rate_hz` before reasoning about how a signal changed over time.
 >
 > Results are downsampled to `max_samples`. If `truncated` is true, the returned series is a decimation of the full data, and fine timing detail may be lost.
+>
+> **Some sources expose more than one bus channel** (e.g. `HS1`, `HS2`). `list_available_signals` pairs each name with its channel. If the same `name` appears on more than one channel, it is **ambiguous** — the reader cannot know which bus you mean, and reading it may return the wrong signal or an error. Confirm the name resolves to a single channel before relying on the result, and say which channel your answer rests on. A `null` channel means a single-channel source, where no ambiguity exists.
 
 **The two paragraphs after the first are doing the real work.** They pre-empt the single most likely reasoning error: treating a one-sample OBD read as though it were a timeseries and confidently announcing that a signal "remained stable."
 
