@@ -29,6 +29,14 @@ from canopy.evals.schemas import (
     ReviewFeedback,
     Severity,
 )
+from canopy.evals.store import append_case, load_persisted_cases, load_regression_cases
+from canopy.evals.tracking import (
+    HistoryRow,
+    append_history,
+    load_baseline,
+    load_history,
+    save_baseline,
+)
 from canopy.evals.trace import ToolInvocation, Trace
 
 __all__ = [
@@ -50,6 +58,14 @@ __all__ = [
     "RegressionReport",
     "run_case",
     "run_regression",
+    "append_case",
+    "load_persisted_cases",
+    "load_regression_cases",
+    "HistoryRow",
+    "append_history",
+    "load_baseline",
+    "load_history",
+    "save_baseline",
     "CalibrationReport",
     "ErrorType",
     "EvalCase",

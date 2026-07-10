@@ -79,10 +79,7 @@
     "reason": "signal_unavailable",
     "source_connected": "synthetic",
     "signals_required": [
-      "TirePressureFrontLeft",
-      "TirePressureFrontRight",
-      "TirePressureRearLeft",
-      "TirePressureRearRight"
+      "TirePressure"
     ],
     "signals_available": [
       "EngineRPM",
@@ -91,7 +88,7 @@
       "EngineLoad",
       "ThrottlePosition"
     ],
-    "suggestion": "Connect a data source that provides tire pressure data, such as a TPMS (Tire Pressure Monitoring System) reader."
+    "suggestion": "Connect to a data source that provides tire pressure information, such as a TPMS (Tire Pressure Monitoring System) enabled OBD-II scanner."
   },
   "iteration": 2,
   "forced_final": false,

@@ -79,8 +79,8 @@
     "reason": "signal_unavailable",
     "source_connected": "synthetic",
     "signals_required": [
-      "GearSelection",
-      "RearCameraStatus"
+      "RearCameraActive",
+      "GearPosition"
     ],
     "signals_available": [
       "EngineRPM",
@@ -89,7 +89,7 @@
       "EngineLoad",
       "ThrottlePosition"
     ],
-    "suggestion": "Answering this question would require a data source with access to body network signals, such as a CAN bus capture."
+    "suggestion": "Connect to a vehicle system data source that provides information about camera status and gear position."
   },
   "iteration": 2,
   "forced_final": false,

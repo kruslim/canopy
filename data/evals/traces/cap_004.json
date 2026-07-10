@@ -2,43 +2,95 @@
   "trace_id": "cap_004",
   "question": "Are there any cooling-system problems in this session?",
   "source": "synthetic",
-  "outcome": "answer",
+  "outcome": "refusal",
   "tool_invocations": [
     {
-      "name": "run_diagnostic_rules",
-      "arguments": {
-        "start": "2023-10-26T18:15:00Z",
-        "end": "2023-10-26T18:25:00Z"
-      },
+      "name": "list_available_signals",
+      "arguments": {},
       "result": {
-        "findings": [],
-        "rules_run": [
-          "correlation.coolant_rising_under_moderate_load"
-        ],
-        "skipped": []
+        "source": "synthetic",
+        "signals": [
+          {
+            "name": "EngineRPM",
+            "unit": "rpm",
+            "typical_range": [
+              600.0,
+              6500.0
+            ],
+            "description": "crankshaft rotational speed"
+          },
+          {
+            "name": "VehicleSpeed",
+            "unit": "km/h",
+            "typical_range": [
+              0.0,
+              240.0
+            ],
+            "description": "road speed of the vehicle"
+          },
+          {
+            "name": "CoolantTemp",
+            "unit": "degC",
+            "typical_range": [
+              -40.0,
+              215.0
+            ],
+            "description": "engine coolant temperature"
+          },
+          {
+            "name": "EngineLoad",
+            "unit": "%",
+            "typical_range": [
+              0.0,
+              100.0
+            ],
+            "description": "calculated engine load"
+          },
+          {
+            "name": "ThrottlePosition",
+            "unit": "%",
+            "typical_range": [
+              0.0,
+              100.0
+            ],
+            "description": "throttle plate position"
+          }
+        ]
       },
       "is_error": false
     }
   ],
   "tools_called": [
-    "run_diagnostic_rules"
+    "list_available_signals"
   ],
   "signals_touched": [],
-  "signals_available": null,
+  "signals_available": [
+    "EngineRPM",
+    "VehicleSpeed",
+    "CoolantTemp",
+    "EngineLoad",
+    "ThrottlePosition"
+  ],
   "findings": [],
   "skipped": [],
-  "answer": {
-    "summary": "No cooling system problems were found in the time range 2023-10-26T18:15:00Z to 2023-10-26T18:25:00Z. The diagnostic rule 'correlation.coolant_rising_under_moderate_load' ran and found no issues.",
-    "claims": [],
-    "findings_referenced": [],
-    "signals_examined": [],
-    "could_not_determine": [
-      "Whether any cooling system problems occurred during the session."
+  "answer": null,
+  "refusal": {
+    "question": "Are there any cooling-system problems in this session?",
+    "reason": "time_range_not_covered",
+    "source_connected": "synthetic",
+    "signals_required": [
+      "CoolantTemp"
     ],
-    "source": "synthetic"
+    "signals_available": [
+      "EngineRPM",
+      "VehicleSpeed",
+      "CoolantTemp",
+      "EngineLoad",
+      "ThrottlePosition"
+    ],
+    "suggestion": "Please provide the start and end times of the session you would like me to analyze for cooling system problems."
   },
-  "refusal": null,
-  "iteration": 4,
+  "iteration": 2,
   "forced_final": false,
-  "validation_retries": 2
+  "validation_retries": 0
 }

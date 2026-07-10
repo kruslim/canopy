@@ -24,9 +24,27 @@ an LLM-judge scores traces against the same taxonomy the human uses. The design 
 > was an `overconfident` call (85%), a judgment a rubric only partially disciplines.
 
 That paragraph is the point of Phase 4: a number, measured honestly, with its ceiling and its
-weak spot stated rather than hidden. The labels behind it are hand-seeded (a solo project has
-no panel) and firm up as real reviewed failures land — the calibration *machinery* is real and
-reproducible with no API key: `uv run python scripts/calibrate.py`.
+weak spot stated rather than hidden. That figure is the *illustration* — hand-seeded labels (a
+solo project has no panel), reproducible with no API key: `uv run python scripts/calibrate.py`.
+The machinery is real; the number is a rehearsal for the one below.
+
+### First real pass — the machinery on collected labels (n=8)
+
+The first calibration on **real** labels — one human review pass over 8 captured traces —
+reads differently, and the gap *is* the finding:
+
+> **50% judge–human agreement (n=8).** Agreement is 100% on every failure mode *except*
+> `false_refusal` (50%), which alone drags the headline down: the judge waved through four
+> refusals that a human marked as answerable questions wrongly declined. No self-agreement
+> ceiling yet — that needs a second review pass a week apart. Reproduce from recorded labels
+> with `uv run python scripts/calibrate.py --real`; the report is
+> [`calibration_report_realpass_a.json`](data/evals/calibration_report_realpass_a.json).
+
+This is a deliberately **pre-fix** snapshot: the same over-refusal shows up independently in the
+regression suite (`scripts/eval.py` → 3/6, all three failures answerable questions refused). The
+next moves are an agent fix — each false refusal minted as a `from_review` regression case and
+tracked run-over-run ([`evals/tracking.py`](src/canopy/evals/tracking.py)) — then review pass B
+for the ceiling. Publishing the low number *before* the fix is the honest version of the story.
 
 **Why a structured taxonomy, not thumbs-up/down?** A thumbs-down says the answer was bad. A
 structured [`ErrorType`](src/canopy/evals/schemas.py) says *which of my defenses failed* —

@@ -21,11 +21,14 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from canopy.evals.schemas import ErrorType, ReviewFeedback, Severity
+from canopy.evals.schemas import ErrorType, EvalCase, ReviewFeedback, Severity
+from canopy.evals.store import append_case
 from canopy.evals.trace import Trace
+from canopy.readers.fixtures import build_fixture, fixture_names
 
 _ROOT = Path(__file__).resolve().parent.parent
 _TRACES = _ROOT / "data" / "evals" / "traces"
+_CASES_PATH = _TRACES.parent / "regression_cases.jsonl"  # persisted from_review cases
 
 _ERROR_TYPES = list(ErrorType)
 _SEVERITIES = list(Severity)
@@ -56,6 +59,75 @@ def _pick_severity() -> Severity | None:
     labels = " / ".join(f"{i}:{s.value}" for i, s in enumerate(_SEVERITIES))
     raw = input(f"  severity ({labels}, blank=none): ").strip()
     return _SEVERITIES[int(raw)] if raw.isdigit() and 0 <= int(raw) < len(_SEVERITIES) else None
+
+
+def _csv(prompt: str) -> list[str]:
+    raw = input(prompt).strip()
+    return [tok.strip() for tok in raw.split(",") if tok.strip()]
+
+
+def _mint_case(trace: Trace, error_types: list[ErrorType]) -> EvalCase | None:
+    """Turn a rejected trace into a permanent ``from_review`` regression case.
+
+    A regression case must be *replayable*, so it names a deterministic fixture (resolved below
+    the seam) rather than reusing the live source the trace ran against. The reviewer supplies
+    the structural ground truth — the outcome the agent should have produced and the signals it
+    must (or must not) cite — which the runner then asserts against every future agent version.
+    The EvalCase validators reject a contradictory spec, so a bad case fails here, not in CI.
+    """
+    if input("  mint a regression case from this reject? [y/N]: ").strip().lower() != "y":
+        return None
+
+    fixture = input(f"  fixture that reproduces this ({', '.join(fixture_names())}): ").strip()
+    try:
+        build_fixture(fixture)
+    except KeyError as e:
+        print(f"  {e}  → skipping case.")
+        return None
+
+    outcome = (
+        input("  expected outcome [answer/refusal] (blank=answer): ").strip().lower() or "answer"
+    )
+    if outcome not in ("answer", "refusal"):
+        print(f"  '{outcome}' is not a valid outcome → skipping case.")
+        return None
+
+    kwargs: dict = dict(
+        case_id=f"from_review_{trace.trace_id}",
+        question=trace.question,
+        source_fixture=fixture,
+        expected_outcome=outcome,
+        origin="from_review",
+        source_trace_id=trace.trace_id,
+        error_types_observed=error_types,
+    )
+    if outcome == "refusal":
+        reason = input("  expected refusal reason (blank=none): ").strip() or None
+        if reason:
+            kwargs["expected_refusal_reason"] = reason
+        kwargs["must_not_cite_signals"] = _csv(
+            "  signals it must NOT cite (comma-sep, blank=none): "
+        )
+    else:
+        kwargs["must_cite_signals"] = _csv("  signals it MUST cite (comma-sep, blank=none): ")
+        kwargs["must_not_cite_signals"] = _csv(
+            "  signals it must NOT cite (comma-sep, blank=none): "
+        )
+        kwargs["must_mention_skipped"] = (
+            input("  must the answer flag skipped rules? [y/N]: ").strip().lower() == "y"
+        )
+
+    try:
+        case = EvalCase(**kwargs)
+    except ValueError as e:
+        print(f"  case rejected by validator: {e}\n  → skipping case.")
+        return None
+
+    if append_case(_CASES_PATH, case):
+        print(f"  minted → {case.case_id} ({_CASES_PATH.relative_to(_ROOT)})")
+    else:
+        print(f"  {case.case_id} already exists in the store → not duplicated.")
+    return case
 
 
 def main() -> int:
@@ -108,12 +180,19 @@ def main() -> int:
             )
             out.write(feedback.model_dump_json() + "\n")
             out.flush()
-            print(f"  recorded: {feedback.verdict} {[e.value for e in error_types]}\n")
+            print(f"  recorded: {feedback.verdict} {[e.value for e in error_types]}")
+
+            # A reject is the flywheel's raw material: offer to turn it into a permanent
+            # regression case so the same failure blocks a future merge.
+            if feedback.verdict == "reject":
+                _mint_case(trace, error_types)
+            print()
 
     print(f"\ndone → {out_path.relative_to(_ROOT)}")
     print(
         "next: run the judge (capture --judge) then  .venv/bin/python scripts/calibrate.py --real"
     )
+    print("      and  .venv/bin/python scripts/eval.py  to replay minted cases + diff the baseline")
     return 0
 
 

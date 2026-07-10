@@ -185,9 +185,23 @@
         <table class="etable" id="etable"></table>
       </div>
     </div>
+    <div class="card" style="margin-top:18px;border-left:3px solid var(--green)">
+      <div style="font-weight:600;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:6px">First real pass · collected labels</div>
+      <div class="bignum">50%<small>judge ↔ human (n=8) — pre-fix</small></div>
+      <p style="color:var(--muted);font-size:14px;margin:10px 0 0">The 85% above is the machinery on
+        hand-seeded labels; this is the first run on <b>real</b> review labels. Agreement is 100% on
+        every failure mode <i>except</i> <code>false_refusal</code> (50%) — the judge waved through
+        four refusals a human marked as answerable questions wrongly declined. <b>No self-agreement
+        ceiling yet</b> (needs review pass B). The same over-refusal appears independently in the
+        regression suite (<code>scripts/eval.py</code> → 3/6 pass, all three failures answerable
+        questions refused).</p>
+      <div class="caveat">Published pre-fix on purpose — the low number is the finding, not something
+        to hide. Reproduce from recorded labels: <code>uv run python scripts/calibrate.py --real</code>.</div>
+    </div>
     <p class="note">Reproducible with no API key: <code>uv run python scripts/calibrate.py</code>.
-      The labels are hand-seeded (a solo project has no panel) — the calibration <i>machinery</i>
-      is the deliverable, and it firms up as real reviewed failures land.</p>
+      The seed labels are hand-authored (a solo project has no panel) — the calibration <i>machinery</i>
+      is the deliverable, and it firms up as real reviewed failures land (the callout above is the
+      first of those).</p>
   </div>
 </section>
 

@@ -52,6 +52,14 @@ def main() -> int:
     parser.add_argument(
         "--judge", action="store_true", help="Also score each trace with the judge."
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite an existing capture. A capture regenerates every trace from a LIVE "
+        "model, so re-running it silently replaces the traces your reviews are keyed to and "
+        "desyncs the eval set. This flag DISCARDS the current traces and judge labels and "
+        "starts clean; it is required once traces already exist.",
+    )
     args = parser.parse_args()
 
     if args.questions is not None:
@@ -59,10 +67,28 @@ def main() -> int:
     else:
         questions = _DEFAULT_QUESTIONS
 
-    model = _build_model(args.provider, args.model)
+    # A frozen trace set is the unit of review: traces, human labels, and judge labels must all
+    # describe the SAME run. Because the agent is non-deterministic, re-capturing over an existing
+    # set is the one action that breaks that invariant — so refuse it unless --force is explicit.
     _TRACES.mkdir(parents=True, exist_ok=True)
+    existing = sorted(_TRACES.glob("*.json"))
+    if existing and not args.force:
+        raise SystemExit(
+            f"{len(existing)} trace(s) already in {_TRACES.relative_to(_ROOT)}. Re-capturing "
+            "regenerates every trace from a live model, which would overwrite the traces your "
+            "reviews are keyed to and silently desync the eval set. Review the existing traces "
+            "with scripts/review.py, or pass --force to discard this capture and start clean."
+        )
+    if args.force:
+        for f in existing:
+            f.unlink()
+        _JUDGE_LABELS.unlink(missing_ok=True)  # a fresh capture owns a fresh, matching label set
 
-    with _JUDGE_LABELS.open("a") if args.judge else _nullctx() as judge_out:
+    model = _build_model(args.provider, args.model)
+
+    # "w", not "a": one capture run produces exactly one complete, self-consistent label set.
+    # Appending was what stacked two runs' labels into the same file.
+    with _JUDGE_LABELS.open("w") if args.judge else _nullctx() as judge_out:
         for i, question in enumerate(questions):
             reader = build_reader()  # fresh reader per run; source chosen by CANOPY_SOURCE
             trace_id = f"cap_{i:03d}"
