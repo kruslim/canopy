@@ -24,17 +24,35 @@ _DEFAULT_SOURCE = "synthetic"
 # caller their config is recognized-but-future rather than simply wrong.
 _PLANNED_SOURCES = ("obd", "can_log")
 
+# Demo scenarios a host may request. A scenario is *not* a source — it selects a
+# ground-truth condition the (synthetic) source reproduces, so a host (e.g. the web UI)
+# can show a healthy bus or a known anomaly without ever naming a concretion. The mapping
+# from scenario to the concrete reader's construction stays here, below the seam. ``None``
+# and ``"normal"`` both mean "no injected anomaly".
+_SCENARIOS: dict[str, str | None] = {
+    "normal": None,
+    "overheat": "overheat",  # coolant climbs under moderate load — the classic overheat
+}
 
-def build_reader(source: str | None = None) -> SignalReader:
+
+def build_reader(source: str | None = None, scenario: str | None = None) -> SignalReader:
     """Construct the reader selected by ``CANOPY_SOURCE`` (or the ``source`` override).
 
-    Returns a ``SignalReader``. The caller above the seam holds the protocol, never the
-    concretion, and must not branch on which one it got.
+    ``scenario`` optionally selects a ground-truth condition for the synthetic source
+    (e.g. ``"overheat"``); the caller passes a plain string and never learns which reader,
+    or which anomaly preset, backs it. Returns a ``SignalReader``. The caller above the
+    seam holds the protocol, never the concretion, and must not branch on which one it got.
     """
     chosen = (source or os.environ.get(_ENV_VAR) or _DEFAULT_SOURCE).strip().lower()
 
+    if scenario is not None and scenario.strip().lower() not in _SCENARIOS:
+        raise ValueError(
+            f"Unknown scenario {scenario!r}. Known: {', '.join(_SCENARIOS)}."
+        )
+    anomaly = _SCENARIOS.get((scenario or "normal").strip().lower())
+
     if chosen == "synthetic":
-        return SyntheticReader()
+        return SyntheticReader(anomaly=anomaly)
 
     if chosen in _PLANNED_SOURCES:
         raise ValueError(

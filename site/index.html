@@ -4,7 +4,8 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Canopy — a source-agnostic diagnostic agent, with grounded refusal</title>
-<meta name="description" content="An MCP server exposing vehicle-diagnostic / CAN-bus domain logic as agent tools, with a LangGraph orchestration layer and a calibrated human-in-the-loop eval harness. Replay real recorded traces: cited answers and grounded refusals." />
+<meta name="description" content="A vehicle-diagnostic agent you can chat with: cited answers or grounded refusals, with an evidence chart annotated by the samples the agent cited. MCP · LangGraph · Pydantic · Evals." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🌿%3C/text%3E%3C/svg%3E" />
 <style>
   :root{
     --bg:#f6f8f7; --panel:#ffffff; --ink:#12211b; --muted:#5c6b64;
@@ -13,78 +14,85 @@
     --red:#c0392b; --red-soft:#fbe9e7; --blue:#2b6cb0; --blue-soft:#e8f0f9;
     --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
     --sans:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    --serif:"Newsreader",Georgia,"Times New Roman",serif;
   }
   *{box-sizing:border-box}
-  html{scroll-behavior:smooth}
+  html,body{height:100%}
   body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.55;-webkit-font-smoothing:antialiased}
   a{color:var(--green);text-decoration:none}
   a:hover{text-decoration:underline}
-  .wrap{max-width:1000px;margin:0 auto;padding:0 20px}
   code,.mono{font-family:var(--mono)}
 
-  /* hero */
-  .hero{background:linear-gradient(160deg,var(--hero),var(--hero2));color:var(--ink-hero);padding:64px 0 52px}
-  .hero .wrap{max-width:900px}
-  .eyebrow{font-family:var(--mono);font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:#7fd1a6;margin:0 0 14px}
-  h1{font-size:44px;line-height:1.08;margin:0 0 16px;letter-spacing:-.02em}
-  .lede{font-size:19px;color:#c8d8d0;max-width:680px;margin:0 0 26px}
-  .cta{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
-  .btn{display:inline-block;padding:11px 18px;border-radius:9px;font-weight:600;font-size:15px}
-  .btn.primary{background:#2fbd7e;color:#08160f}
-  .btn.primary:hover{background:#43cd8e;text-decoration:none}
-  .btn.ghost{border:1px solid #35513f;color:var(--ink-hero)}
-  .btn.ghost:hover{border-color:#5a8a6c;text-decoration:none}
+  /* ── two-pane app shell ─────────────────────────────────────────── */
+  .app{display:grid;grid-template-columns:minmax(330px,400px) 1fr;height:100vh;overflow:hidden}
+  @media(max-width:860px){.app{grid-template-columns:1fr;height:auto;overflow:visible}}
 
-  .stats{display:flex;gap:14px;flex-wrap:wrap;margin-top:34px}
-  .stat{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);border-radius:11px;padding:14px 18px;min-width:150px}
-  .stat b{display:block;font-size:26px;color:#fff;font-family:var(--mono);letter-spacing:-.01em}
-  .stat span{font-size:12.5px;color:#9fb4aa}
+  /* ── left: chat ─────────────────────────────────────────────────── */
+  .chat{display:flex;flex-direction:column;min-height:0;background:linear-gradient(178deg,var(--hero),var(--hero2));color:var(--ink-hero);border-right:1px solid #0a140f}
+  @media(max-width:860px){.chat{height:88vh}}
+  .chat-head{padding:18px 20px 14px;border-bottom:1px solid rgba(255,255,255,.08)}
+  .chat-head .brand{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .chat-head h1{font-size:22px;margin:0;letter-spacing:-.02em;color:#fff}
+  .chat-head .eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:#7fd1a6;margin:0 0 4px}
+  .chat-head p{margin:8px 0 0;font-size:12.5px;color:#a9c3b7}
+  .badge-live{font-family:var(--mono);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:4px 9px;border-radius:999px;white-space:nowrap;border:1px solid rgba(255,255,255,.18);color:#a9c3b7}
+  .badge-live.on{background:var(--green);border-color:var(--green);color:#08160f}
+  .scenario{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:12px;color:#a9c3b7}
+  .scenario select{font-family:var(--mono);font-size:12px;background:rgba(255,255,255,.07);color:#e8f1ec;border:1px solid rgba(255,255,255,.16);border-radius:8px;padding:5px 8px;cursor:pointer}
+  .scenario select:focus{outline:1px solid var(--green)}
 
-  section{padding:52px 0}
-  section:nth-child(even){background:var(--panel);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
-  h2{font-size:27px;margin:0 0 6px;letter-spacing:-.01em}
-  .sub{color:var(--muted);margin:0 0 26px;max-width:660px}
+  .chatlog{flex:1;min-height:0;overflow-y:auto;padding:18px 18px 8px;display:flex;flex-direction:column;gap:12px}
+  .msg{max-width:92%;font-size:13.5px;border-radius:13px;padding:10px 13px;white-space:pre-wrap;word-wrap:break-word}
+  .msg.user{align-self:flex-end;background:#2fbd7e;color:#08160f;border-bottom-right-radius:4px;font-weight:500}
+  .msg.bot{align-self:flex-start;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:#e8f1ec;border-bottom-left-radius:4px;cursor:pointer;transition:.12s}
+  .msg.bot:hover{border-color:rgba(127,209,166,.5)}
+  .msg.bot.active{border-color:var(--green);background:rgba(47,189,126,.12)}
+  .msg.bot .bmeta{display:flex;align-items:center;gap:7px;margin-top:7px;font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.05em}
+  .tag{padding:2px 7px;border-radius:999px;font-weight:700}
+  .tag.answer{background:var(--green-soft);color:#0f5c3b}
+  .tag.refusal{background:var(--amber-soft);color:#7a5312}
+  .tag.replay{background:rgba(255,255,255,.1);color:#a9c3b7}
+  .tag.err{background:var(--red-soft);color:#7d241a}
+  .msg.thinking{color:#a9c3b7;font-style:italic;display:flex;align-items:center;gap:9px;cursor:default}
+  .spin{width:13px;height:13px;border:2px solid rgba(255,255,255,.25);border-top-color:#7fd1a6;border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
+  @keyframes spin{to{transform:rotate(360deg)}}
 
-  /* architecture stack */
-  .stack{display:flex;flex-direction:column;gap:7px;font-family:var(--mono);font-size:14px}
-  .layer{display:flex;justify-content:space-between;align-items:center;gap:12px;background:var(--green-soft);border:1px solid #c9e6d5;border-radius:8px;padding:12px 15px}
-  .layer.below{background:#eef1f5;border-color:#dbe1e8}
-  .layer .tag{font-size:11.5px;color:var(--muted);white-space:nowrap}
-  .seam{display:flex;align-items:center;gap:12px;margin:4px 0;color:var(--green);font-weight:700;font-size:12.5px;letter-spacing:.12em}
-  .seam::before,.seam::after{content:"";height:2px;background:linear-gradient(90deg,transparent,var(--green),transparent);flex:1}
-  .note{margin-top:16px;font-size:14.5px;color:var(--muted)}
+  .examples{padding:4px 16px 10px;display:flex;flex-wrap:wrap;gap:7px}
+  .examples .lbl{width:100%;font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#7f978b;margin-bottom:2px}
+  .exchip{border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.04);color:#cfe3d8;border-radius:999px;padding:6px 11px;font-size:11.5px;cursor:pointer;transition:.12s;display:flex;align-items:center;gap:7px;text-align:left}
+  .exchip:hover{border-color:#7fd1a6;color:#fff}
+  .exdot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+  .exdot.answer{background:#7fd1a6} .exdot.refusal{background:#e2b667}
 
-  /* calibration */
-  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:20px}
-  @media(max-width:720px){.grid2{grid-template-columns:1fr}}
-  .card{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:20px}
-  section:nth-child(even) .card{background:#fbfdfc}
-  .bignum{font-family:var(--mono);font-size:40px;font-weight:700;color:var(--green);letter-spacing:-.02em}
-  .bignum small{font-size:15px;color:var(--muted);font-weight:400;margin-left:4px}
-  .etable{width:100%;border-collapse:collapse;font-size:13.5px;margin-top:6px}
-  .etable td{padding:6px 8px;border-bottom:1px solid var(--line)}
-  .etable td:first-child{font-family:var(--mono);font-size:12.5px}
-  .etable td:last-child{text-align:right;font-family:var(--mono);font-weight:600}
-  .bar{height:7px;border-radius:4px;background:var(--line);overflow:hidden;margin-top:3px}
-  .bar>i{display:block;height:100%;background:var(--green)}
-  .caveat{background:var(--amber-soft);border:1px solid #eddcb6;border-radius:10px;padding:14px 16px;font-size:14px;color:#6b5418;margin-top:18px}
+  .composer{padding:12px 14px 14px;border-top:1px solid rgba(255,255,255,.08);display:flex;gap:8px;align-items:flex-end}
+  .composer textarea{flex:1;resize:none;font-family:var(--sans);font-size:13.5px;background:rgba(255,255,255,.07);color:#fff;border:1px solid rgba(255,255,255,.16);border-radius:11px;padding:10px 12px;line-height:1.4;max-height:120px}
+  .composer textarea::placeholder{color:#8fa89c}
+  .composer textarea:focus{outline:1px solid var(--green);border-color:var(--green)}
+  .composer button{flex-shrink:0;background:#2fbd7e;color:#08160f;border:0;border-radius:11px;padding:10px 16px;font-weight:700;font-size:13.5px;cursor:pointer;transition:.12s}
+  .composer button:hover:not(:disabled){background:#43cd8e}
+  .composer button:disabled{opacity:.5;cursor:not-allowed}
 
-  /* viewer */
-  .chips{display:flex;gap:9px;flex-wrap:wrap;margin-bottom:20px}
-  .chip{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:8px 14px;font-size:13.5px;cursor:pointer;display:flex;align-items:center;gap:8px;transition:.12s}
-  .chip:hover{border-color:var(--green)}
-  .chip[aria-selected="true"]{border-color:var(--green);background:var(--green-soft);font-weight:600}
-  .dot{width:8px;height:8px;border-radius:50%}
-  .dot.answer{background:var(--green)} .dot.refusal{background:var(--amber)}
+  /* ── right: workspace ───────────────────────────────────────────── */
+  .workspace{min-height:0;overflow-y:auto;background:var(--bg)}
+  .ws-inner{max-width:920px;margin:0 auto;padding:26px 26px 60px}
+  .ws-head{display:flex;justify-content:space-between;align-items:baseline;gap:16px;flex-wrap:wrap;margin-bottom:14px}
+  .ws-head .t{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+  .ws-head .src{font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .empty{border:1px dashed var(--line);border-radius:16px;padding:60px 30px;text-align:center;color:var(--muted);background:var(--panel)}
+  .empty h2{font-family:var(--serif);font-weight:500;font-size:24px;color:var(--ink);margin:0 0 8px}
+  .empty p{margin:0 auto;max-width:440px;font-size:14px}
+  .empty .legend{display:inline-flex;gap:16px;flex-wrap:wrap;justify-content:center;margin-top:20px;font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .empty .legend span{display:flex;align-items:center;gap:6px}
 
+  /* viewer (reused, right-pane) */
   .viewer{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden}
   .vq{padding:18px 22px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
-  .vq h3{margin:0;font-size:18px}
+  .vq h3{margin:0;font-size:18px;font-family:var(--serif);font-weight:500}
   .badge{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:4px 10px;border-radius:999px;white-space:nowrap}
   .badge.answer{background:var(--green-soft);color:var(--green)}
   .badge.refusal{background:var(--amber-soft);color:var(--amber)}
   .vbody{padding:6px 22px 22px}
-  .step{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.1em;margin:22px 0 12px;font-weight:700}
+  .step{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.1em;margin:22px 0 12px;font-weight:700;font-family:var(--mono)}
 
   .tl{display:flex;flex-direction:column;gap:0}
   .call{display:flex;gap:14px;padding:12px 0;border-bottom:1px dashed var(--line)}
@@ -103,132 +111,91 @@
   .outcome.answer{background:var(--green-soft);border:1px solid #c9e6d5}
   .outcome.refusal{background:var(--amber-soft);border:1px solid #eddcb6}
   .summary{font-size:15.5px;margin:0 0 6px}
+  .verdict{font-family:var(--serif);font-size:23px;line-height:1.25;margin:0 0 14px}
   .claim{background:#fff;border:1px solid var(--line);border-radius:10px;padding:13px 15px;margin-top:12px}
-  .claim .stmt{font-size:14.5px;margin-bottom:9px}
+  .claim .hd{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:9px}
+  .claim .stmt{font-size:14.5px}
   .cites{display:flex;flex-wrap:wrap;gap:8px}
   .cite{font-family:var(--mono);font-size:12px;background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:5px 9px}
   .cite b{color:var(--green)}
-  .conf{float:right;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--green);letter-spacing:.05em}
+  .conf{flex:0 0 auto;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--green);letter-spacing:.05em;padding-top:2px}
   .kv{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
   .pill{font-family:var(--mono);font-size:12px;background:#fff;border:1px solid var(--line);border-radius:7px;padding:4px 9px}
   .pill.req{border-color:#eddcb6;background:#fff}
   .cnd{font-size:13px;color:var(--muted);margin-top:10px}
   .meta{display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;font-size:12.5px;color:var(--muted);font-family:var(--mono)}
 
-  footer{padding:40px 0 60px;color:var(--muted);font-size:14px}
-  footer .wrap{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap}
-  .hy{background:var(--green-soft);border:1px solid #c9e6d5;border-radius:10px;padding:12px 16px;font-size:13.5px;color:#1c5e40;margin-top:8px}
+  /* evidence chart + fact cards (drives the answer view) */
+  .facts{display:flex;flex-wrap:wrap;gap:10px;margin:2px 0 14px}
+  .fact{flex:1;min-width:110px;background:#fff;border:1px solid #c9e6d5;border-radius:10px;padding:10px 13px}
+  .fact b{display:block;font-family:var(--mono);font-size:20px;font-weight:700;letter-spacing:-.01em}
+  .fact span{font-size:11.5px;color:var(--muted)}
+  .chartcard{background:#fff;border:1px solid #c9e6d5;border-radius:12px;padding:13px 14px 8px}
+  .chartcard .chd{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:2px}
+  .chartcard .chd .t{font-size:13px;font-weight:600}
+  .chartcard .chd .r{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+  .clegend{display:flex;flex-wrap:wrap;gap:14px;padding:6px 2px 2px;font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .clegend span{display:flex;align-items:center;gap:6px}
+  .swatch{display:inline-block}
 </style>
 </head>
 <body>
 
-<header class="hero">
-  <div class="wrap">
-    <p class="eyebrow">MCP · LangGraph · Pydantic · Evals</p>
-    <h1>Canopy</h1>
-    <p class="lede">A vehicle-diagnostic agent that answers with <b>cited evidence</b> — or
-      <b>refuses, grounded</b>, when its data source genuinely can't answer. Built above a
-      source-agnostic seam, so swapping OBD for raw CAN changes nothing above it.</p>
-    <div class="cta">
-      <a class="btn primary" href="#viewer">Replay a real trace ↓</a>
-      <a class="btn ghost" href="https://github.com/kruslim/canopy">View the code on GitHub</a>
-    </div>
-    <div class="stats">
-      <div class="stat"><b id="s-agree">85%</b><span>LLM-judge ↔ human agreement</span></div>
-      <div class="stat"><b id="s-self">90%</b><span>self-agreement ceiling proxy</span></div>
-      <div class="stat"><b id="s-tests">109</b><span>tests passing</span></div>
-      <div class="stat"><b>0</b><span>hallucinated units — every value cites one</span></div>
-    </div>
-  </div>
-</header>
-
-<section id="thesis">
-  <div class="wrap">
-    <h2>The one bet the whole design rests on</h2>
-    <p class="sub">The GenAI layers are kept ignorant of where a number came from. A normalizer
-      sits between the data and the intelligence, so the tools, agent, and evals never learn
-      whether a reading was an OBD PID or a decoded CAN frame. A seam-enforcement test fails CI
-      if that knowledge leaks upward.</p>
-    <div class="stack">
-      <div class="layer"><span>L6 &nbsp;Evals &amp; human-in-the-loop</span><span class="tag">GenAI · calibrated judge</span></div>
-      <div class="layer"><span>L5 &nbsp;Structured outputs &amp; validation</span><span class="tag">GenAI · Pydantic, cited</span></div>
-      <div class="layer"><span>L4 &nbsp;Agent orchestration</span><span class="tag">GenAI · LangGraph</span></div>
-      <div class="layer"><span>L3 &nbsp;MCP server</span><span class="tag">GenAI · stdio tools</span></div>
-      <div class="layer"><span>L2 &nbsp;Tool design &amp; schemas</span><span class="tag">GenAI · 4 tools</span></div>
-      <div class="seam">↑ above the seam: source-agnostic &nbsp;·&nbsp; the seam &nbsp;·&nbsp; below: knows the source ↓</div>
-      <div class="layer below"><span>L1b Domain logic (diagnostic rules)</span><span class="tag">portable expertise</span></div>
-      <div class="layer below"><span>L1a Normalizer (SignalSample / SignalSeries)</span><span class="tag">the contract</span></div>
-      <div class="layer below"><span>L0 &nbsp;Data access: synthetic | OBD | CAN+DBC</span><span class="tag">plumbing</span></div>
-    </div>
-    <p class="note">Everything shown below runs against the <b>synthetic</b> source — deterministic,
-      so it doubles as the eval fixture. Phase 5 swaps in raw CAN behind the same normalizer;
-      the eval harness is meant to keep passing unchanged. That's the proof the seam held.</p>
-  </div>
-</section>
-
-<section id="eval">
-  <div class="wrap">
-    <h2>The headline number, stated honestly</h2>
-    <p class="sub">A structured error taxonomy — not thumbs-up/down — so every disagreement points
-      at <i>which defense failed</i>. Here is where the judge is trustworthy and where it isn't.</p>
-    <div class="grid2">
-      <div class="card">
-        <div class="bignum" id="c-agree">85%<small>judge ↔ human (n=<span id="c-n">20</span>)</small></div>
-        <p style="color:var(--muted);font-size:14px;margin:10px 0 0">Perfect on the mechanically
-          checkable failures. Every single disagreement was an <code>overconfident</code> call — the
-          one judgment a rubric only partly disciplines. Read the judge as <b>approaching, not
-          exceeding</b>, the reliability ceiling of its ground truth.</p>
-        <div class="caveat" id="caveat">Solo project: no reviewer panel exists…</div>
+<div class="app">
+  <!-- ── LEFT: chat ─────────────────────────────────────────────── -->
+  <aside class="chat">
+    <div class="chat-head">
+      <div class="brand">
+        <div>
+          <p class="eyebrow">MCP · LangGraph · Pydantic</p>
+          <h1>Canopy</h1>
+        </div>
+        <span class="badge-live" id="live-badge">offline</span>
       </div>
-      <div class="card">
-        <div style="font-weight:600;font-size:14px;margin-bottom:8px">Agreement by error type</div>
-        <table class="etable" id="etable"></table>
+      <p>Ask a vehicle-diagnostic question. Canopy answers with <b>cited evidence</b> — or
+        <b>refuses, grounded</b>, when the source can't answer. The chart on the right is
+        annotated with the exact samples it cited.</p>
+      <div class="scenario">
+        <label for="scenario">Simulated scenario</label>
+        <select id="scenario">
+          <option value="normal">Normal (healthy bus)</option>
+          <option value="overheat">Overheat (rising coolant)</option>
+        </select>
       </div>
     </div>
-    <div class="card" style="margin-top:18px;border-left:3px solid var(--green)">
-      <div style="font-weight:600;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:6px">First real pass · collected labels</div>
-      <div class="bignum">50%<small>judge ↔ human (n=8) — pre-fix</small></div>
-      <p style="color:var(--muted);font-size:14px;margin:10px 0 0">The 85% above is the machinery on
-        hand-seeded labels; this is the first run on <b>real</b> review labels. Agreement is 100% on
-        every failure mode <i>except</i> <code>false_refusal</code> (50%) — the judge waved through
-        four refusals a human marked as answerable questions wrongly declined. <b>No self-agreement
-        ceiling yet</b> (needs review pass B). The same over-refusal appears independently in the
-        regression suite (<code>scripts/eval.py</code> → 3/6 pass, all three failures answerable
-        questions refused).</p>
-      <div class="caveat">Published pre-fix on purpose — the low number is the finding, not something
-        to hide. Reproduce from recorded labels: <code>uv run python scripts/calibrate.py --real</code>.</div>
-    </div>
-    <p class="note">Reproducible with no API key: <code>uv run python scripts/calibrate.py</code>.
-      The seed labels are hand-authored (a solo project has no panel) — the calibration <i>machinery</i>
-      is the deliverable, and it firms up as real reviewed failures land (the callout above is the
-      first of those).</p>
-  </div>
-</section>
 
-<section id="viewer">
-  <div class="wrap">
-    <h2>Replay a real recorded trace</h2>
-    <p class="sub">Every trace below is an actual run pulled from <code>data/evals/traces/</code>
-      — the full tool-call record, the structured answer or the grounded refusal. Nothing here is
-      mocked for the demo. Pick a question:</p>
-    <div class="chips" id="chips" role="tablist"></div>
-    <div class="viewer" id="viewer-panel"></div>
-  </div>
-</section>
+    <div class="chatlog" id="chatlog"></div>
 
-<footer>
-  <div class="wrap">
-    <div>
-      <div><b>Canopy</b> — <a href="https://github.com/kruslim/canopy">github.com/kruslim/canopy</a></div>
-      <div class="hy">IP hygiene: no proprietary CAN databases, captures, or signal definitions —
-        ever. Only public OBD-II PIDs, open DBCs, and synthetic data. Every trace above is
-        <code>source: synthetic</code>.</div>
+    <div class="examples" id="examples"></div>
+
+    <div class="composer">
+      <textarea id="input" rows="1" placeholder="Ask Canopy… e.g. Is the engine overheating?"></textarea>
+      <button id="send">Ask</button>
     </div>
-    <div style="max-width:340px">Graceful refusal is a feature, not a failure — a question the
-      source can't answer should produce an honest "I don't have a tool for that," never an
-      invented number.</div>
-  </div>
-</footer>
+  </aside>
+
+  <!-- ── RIGHT: graph + everything ──────────────────────────────── -->
+  <main class="workspace">
+    <div class="ws-inner">
+      <div class="ws-head">
+        <span class="t">Diagnostic evidence</span>
+        <span class="src" id="ws-src"></span>
+      </div>
+      <div id="viewer-panel">
+        <div class="empty">
+          <h2>Ask a question to see the evidence</h2>
+          <p>Canopy runs its tools, then renders the full tool-call trace, its cited answer
+             (or grounded refusal), and an evidence chart marking every sample the agent cited.</p>
+          <div class="legend">
+            <span><svg class="swatch" width="14" height="8"><line x1="0" y1="4" x2="14" y2="4" stroke="#1f8a5b" stroke-width="2"/></svg>reading</span>
+            <span><svg class="swatch" width="12" height="12"><circle cx="6" cy="6" r="5" fill="none" stroke="#b7791f" stroke-width="2"/></svg>cited sample</span>
+            <span><svg class="swatch" width="14" height="8"><line x1="0" y1="4" x2="14" y2="4" stroke="#c0392b" stroke-width="2" stroke-dasharray="4 3"/></svg>overheat ref</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
 
 <script src="data.js"></script>
 <script>
@@ -236,29 +203,90 @@
   var D = window.CANOPY_DATA || {traces:[], calibration:{}};
   var esc = function(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});};
 
-  // ---- calibration section ----
-  var cal = D.calibration || {};
-  var setTxt = function(id,v){var e=document.getElementById(id); if(e)e.textContent=v;};
-  if(cal.judge_human_agreement!=null){
-    var pct = Math.round(cal.judge_human_agreement*100)+'%';
-    setTxt('s-agree', pct);
-    document.getElementById('c-agree').innerHTML = pct+'<small>judge ↔ human (n='+(cal.n_traces||'?')+')</small>';
-  }
-  if(cal.self_agreement!=null) setTxt('s-self', Math.round(cal.self_agreement*100)+'%');
-  if(cal.n_traces!=null) setTxt('c-n', cal.n_traces);
-  if(cal.single_reviewer_note) setTxt('caveat', cal.single_reviewer_note);
-  var et = document.getElementById('etable');
-  if(et && cal.judge_agreement_by_error_type){
-    var rows = Object.keys(cal.judge_agreement_by_error_type).map(function(k){
-      var v = cal.judge_agreement_by_error_type[k], p = Math.round(v*100);
-      return '<tr><td>'+esc(k)+'<div class="bar"><i style="width:'+p+'%"></i></div></td><td>'+p+'%</td></tr>';
-    });
-    et.innerHTML = rows.join('');
+  var panel = document.getElementById('viewer-panel');
+  var chatlog = document.getElementById('chatlog');
+  var input = document.getElementById('input');
+  var sendBtn = document.getElementById('send');
+  var scenarioSel = document.getElementById('scenario');
+  var wsSrc = document.getElementById('ws-src');
+  var liveBadge = document.getElementById('live-badge');
+
+  /* ══════════════════════════════════════════════════════════════════
+     Right-pane renderers — the evidence chart is annotated straight from
+     the LLM's answer citations. Identical for a LIVE response and a
+     replayed recorded trace, since both carry the same trace shape.
+     ══════════════════════════════════════════════════════════════════ */
+  function nice(v){ return Math.abs(v)>=100 ? v.toFixed(0) : v.toFixed(1); }
+  function unitSuffix(u){ return u==='degC' ? '°' : (u==='%' ? '%' : ''); }
+  function timeLabel(t, maxT){
+    if(maxT>=7200) return (t/3600).toFixed(t%3600?1:0)+'h';
+    if(maxT>=120)  return Math.round(t/60)+'m';
+    return Math.round(t)+'s';
   }
 
-  // ---- trace viewer ----
-  var chips = document.getElementById('chips');
-  var panel = document.getElementById('viewer-panel');
+  // Vanilla SVG evidence chart. Draws the reading, its observed band, min/peak and
+  // cited samples, plus an overheat reference line when the unit is degC.
+  function chartSVG(plot){
+    var S = plot.samples||[]; if(!S.length) return '';
+    var W=1000,H=360,mL=54,mR=132,mT=20,mB=40, pw=W-mL-mR, ph=H-mT-mB;
+    var maxT = S[S.length-1].t || 1;
+    var vs = S.map(function(p){return p.v;});
+    var mn = Math.min.apply(null,vs), mx = Math.max.apply(null,vs);
+    var lo = mn, hi = mx;
+    if(plot.ref!=null){ hi = Math.max(hi, plot.ref); lo = Math.min(lo, plot.ref); }
+    var pad = (hi-lo)*0.18 || 1; lo -= pad; hi += pad;
+    var sx = function(t){ return mL + (t/maxT)*pw; };
+    var sy = function(v){ return mT + (1-(v-lo)/(hi-lo))*ph; };
+    var U = unitSuffix(plot.unit);
+    var P = [];
+    P.push('<defs><linearGradient id="cpyg" x1="0" y1="0" x2="0" y2="1">'
+      + '<stop offset="0%" stop-color="#1f8a5b" stop-opacity="0.16"/>'
+      + '<stop offset="100%" stop-color="#1f8a5b" stop-opacity="0"/></linearGradient></defs>');
+    // observed band
+    P.push('<rect x="'+mL+'" y="'+sy(mx).toFixed(1)+'" width="'+pw+'" height="'+Math.max(2,(sy(mn)-sy(mx))).toFixed(1)+'" fill="rgba(31,138,91,0.10)"/>');
+    // horizontal gridlines + y labels
+    for(var g=0; g<=4; g++){
+      var yv = lo + (hi-lo)*g/4, y = sy(yv);
+      P.push('<line x1="'+mL+'" y1="'+y.toFixed(1)+'" x2="'+(mL+pw)+'" y2="'+y.toFixed(1)+'" stroke="#e2e8e4"/>');
+      P.push('<text x="'+(mL-8)+'" y="'+(y+3.5).toFixed(1)+'" font-size="11" fill="#8a968f" text-anchor="end" font-family="ui-monospace,Menlo,monospace">'+nice(yv)+'</text>');
+    }
+    // x ticks
+    for(var k=0;k<=6;k++){
+      var t = maxT*k/6, x = sx(t);
+      P.push('<line x1="'+x.toFixed(1)+'" y1="'+mT+'" x2="'+x.toFixed(1)+'" y2="'+(mT+ph)+'" stroke="#f0f4f2"/>');
+      P.push('<text x="'+x.toFixed(1)+'" y="'+(mT+ph+17)+'" font-size="11" fill="#8a968f" text-anchor="middle" font-family="ui-monospace,Menlo,monospace">'+timeLabel(t,maxT)+'</text>');
+    }
+    // reference line
+    if(plot.ref!=null){
+      var ry = sy(plot.ref);
+      P.push('<line x1="'+mL+'" y1="'+ry.toFixed(1)+'" x2="'+(mL+pw)+'" y2="'+ry.toFixed(1)+'" stroke="#c0392b" stroke-width="1.5" stroke-dasharray="6 5"/>');
+      P.push('<text x="'+(mL+pw+8)+'" y="'+(ry+4).toFixed(1)+'" font-size="11" fill="#c0392b" font-family="ui-monospace,Menlo,monospace">ref '+nice(plot.ref)+U+'</text>');
+    }
+    // area + line
+    var line = S.map(function(p,i){ return (i?'L':'M')+sx(p.t).toFixed(1)+','+sy(p.v).toFixed(1); }).join(' ');
+    P.push('<path d="'+line+' L'+sx(maxT).toFixed(1)+','+sy(lo).toFixed(1)+' L'+sx(0).toFixed(1)+','+sy(lo).toFixed(1)+' Z" fill="url(#cpyg)"/>');
+    P.push('<path d="'+line+'" fill="none" stroke="#1f8a5b" stroke-width="2" stroke-linejoin="round"/>');
+    P.push('<text x="'+(mL+7)+'" y="'+(sy(mx)-6).toFixed(1)+'" font-size="10.5" fill="#1f8a5b" font-family="ui-monospace,Menlo,monospace">observed '+nice(mn)+'–'+nice(mx)+U+'</text>');
+    // min / peak markers
+    function marker(val,color,label,dy){
+      var mi=0; for(var i=1;i<S.length;i++){ if((label==='peak'&&S[i].v>S[mi].v)||(label==='min'&&S[i].v<S[mi].v)) mi=i; }
+      var x=sx(S[mi].t), y=sy(S[mi].v);
+      var tx=Math.min(Math.max(x,mL+30),mL+pw-30);
+      P.push('<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="4" fill="'+color+'" stroke="#fff" stroke-width="1.5"/>');
+      P.push('<text x="'+tx.toFixed(1)+'" y="'+(y+dy).toFixed(1)+'" font-size="11" font-weight="700" fill="'+color+'" text-anchor="middle" font-family="ui-monospace,Menlo,monospace">'+label+' '+nice(S[mi].v)+U+'</text>');
+    }
+    marker(mx,'#c0392b','peak',-10); marker(mn,'#2b6cb0','min',18);
+    // cited samples — the LLM's findings, marked on the graph
+    (plot.cites||[]).forEach(function(c){
+      if(c.t==null) return;
+      var x=sx(c.t), y=sy(c.v), left = x < mL+pw/2;
+      P.push('<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="7" fill="none" stroke="#b7791f" stroke-width="2"/>');
+      P.push('<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="2.5" fill="#b7791f"/>');
+      P.push('<text x="'+((left?x+12:x-12).toFixed(1))+'" y="'+(y-13).toFixed(1)+'" font-size="10.5" fill="#8a5a12" text-anchor="'+(left?'start':'end')+'" font-family="ui-monospace,Menlo,monospace">cited '+nice(c.v)+U+'</text>');
+    });
+    P.push('<text x="15" y="'+(mT+ph/2)+'" font-size="10.5" fill="#8a968f" font-family="ui-monospace,Menlo,monospace" text-anchor="middle" transform="rotate(-90 15 '+(mT+ph/2)+')">'+esc(plot.name)+' ('+esc(plot.unit)+')</text>');
+    return '<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet" style="width:100%;height:auto;display:block">'+P.join('')+'</svg>';
+  }
 
   function renderCall(inv, i){
     var raw = esc(JSON.stringify(inv.result, null, 2));
@@ -275,20 +303,53 @@
       + '</div>';
   }
 
-  function renderAnswer(a){
+  function factCards(t, plot){
+    var vs = plot.samples.map(function(p){return p.v;});
+    var mn = Math.min.apply(null,vs), mx = Math.max.apply(null,vs), U = unitSuffix(plot.unit);
+    var cards = [
+      {v:nice(mn)+U, l:'min observed', c:'#2b6cb0'},
+      {v:nice(mx)+U, l:'peak observed', c:'#c0392b'}
+    ];
+    if(plot.ref!=null) cards.push({v:nice(plot.ref-mx)+U, l:'headroom to ref', c:'#1f8a5b'});
+    var rules = (t.tool_invocations||[]).filter(function(i){return i.name==='run_diagnostic_rules';})[0];
+    if(rules) cards.push({v:String((rules.result&&rules.result.findings||[]).length), l:'rules triggered', c:'#12211b'});
+    return '<div class="facts">'+cards.map(function(c){
+      return '<div class="fact"><b style="color:'+c.c+'">'+esc(c.v)+'</b><span>'+c.l+'</span></div>';
+    }).join('')+'</div>';
+  }
+
+  function renderAnswer(t){
+    var a = t.answer||{}, plot = t.plot_series;
+    if(plot){ plot.cites = (a.claims||[]).reduce(function(acc,c){ return acc.concat((c.citations||[])); },[])
+        .filter(function(ci){return ci.t!=null;}).map(function(ci){return {t:ci.t, v:ci.value};}); }
     var claims = (a.claims||[]).map(function(c){
       var cites = (c.citations||[]).map(function(ci){
         return '<span class="cite"><b>'+esc(ci.signal)+'</b> = '+esc(ci.value)+' '+esc(ci.unit)
              + ' <span style="color:var(--muted)">@ '+esc((ci.timestamp||'').replace('T',' ').replace('Z',''))+'</span></span>';
       }).join('');
-      return '<div class="claim"><span class="conf">'+esc(c.confidence||'')+'</span>'
-           + '<div class="stmt">'+esc(c.statement)+'</div>'
+      return '<div class="claim"><div class="hd"><div class="stmt">'+esc(c.statement)+'</div><span class="conf">'+esc(c.confidence||'')+'</span></div>'
            + (cites?'<div class="cites">'+cites+'</div>':'<div class="cnd">no citations</div>')+'</div>';
     }).join('');
     var cnd = (a.could_not_determine||[]).map(function(x){return '<li>'+esc(x)+'</li>';}).join('');
+    var chart = '';
+    if(plot){
+      chart = factCards(t, plot)
+        + '<div class="chartcard">'
+        +   '<div class="chd"><div class="t">'+esc(plot.name)+' over session · '+esc(plot.unit)+'</div>'
+        +     '<div class="r">'+plot.samples.length+' pts · '+timeLabel(plot.samples[plot.samples.length-1].t, plot.samples[plot.samples.length-1].t)+' span</div></div>'
+        +   chartSVG(plot)
+        +   '<div class="clegend">'
+        +     '<span><svg class="swatch" width="14" height="8"><line x1="0" y1="4" x2="14" y2="4" stroke="#1f8a5b" stroke-width="2"/></svg>reading</span>'
+        +     '<span><svg class="swatch" width="12" height="12"><circle cx="6" cy="6" r="5" fill="none" stroke="#b7791f" stroke-width="2"/></svg>cited sample</span>'
+        +     (plot.ref!=null?'<span><svg class="swatch" width="14" height="8"><line x1="0" y1="4" x2="14" y2="4" stroke="#c0392b" stroke-width="2" stroke-dasharray="4 3"/></svg>overheat ref</span>':'')
+        +     '<span><span class="swatch" style="width:11px;height:11px;background:rgba(31,138,91,.14)"></span>observed band</span>'
+        +   '</div>'
+        + '</div>';
+    }
     return '<div class="outcome answer">'
-      + '<p class="summary">'+esc(a.summary)+'</p>'
-      + claims
+      + '<p class="verdict">'+esc(a.summary)+'</p>'
+      + chart
+      + (claims?'<div class="step" style="margin-top:18px">Claims &amp; citations</div>'+claims:'')
       + (cnd?'<div class="cnd"><b>Explicitly could not determine:</b><ul style="margin:6px 0 0">'+cnd+'</ul></div>':'')
       + '</div>';
   }
@@ -297,22 +358,25 @@
     var req = (r.signals_required||[]).map(function(s){return '<span class="pill req">'+esc(s)+' ✗</span>';}).join('');
     var av = (r.signals_available||[]).map(function(s){return '<span class="pill">'+esc(s)+'</span>';}).join('');
     return '<div class="outcome refusal">'
-      + '<p class="summary">The source cannot answer this — refusing rather than guessing.</p>'
-      + '<div style="font-size:13px;color:var(--muted);margin-top:4px">reason: <code>'+esc(r.reason)+'</code></div>'
-      + '<div style="margin-top:12px;font-size:13px"><b>Needs signals this source lacks:</b></div><div class="kv">'+req+'</div>'
+      + '<p class="verdict">Grounded refusal — not a guess.</p>'
+      + '<p class="summary">The connected source can\'t support this question, so Canopy declines rather than inventing a value.</p>'
+      + '<div style="font-size:13px;color:#6b5418;margin-top:4px">reason: <code>'+esc(r.reason)+'</code></div>'
+      + '<div style="margin-top:12px;font-size:13px"><b>Needs signals this source lacks:</b></div><div class="kv">'+(req||'<span class="cnd">question under-specified — no signal resolved</span>')+'</div>'
       + '<div style="margin-top:12px;font-size:13px"><b>What <i>is</i> available:</b></div><div class="kv">'+av+'</div>'
-      + '<div class="cnd" style="margin-top:12px">'+esc(r.suggestion)+'</div>'
+      + '<div class="cnd" style="margin-top:12px"><b class="mono" style="color:#5c6b64">suggestion → </b>'+esc(r.suggestion)+'</div>'
       + '</div>';
   }
 
   function renderTrace(t){
-    var calls = t.tool_invocations.map(renderCall).join('');
-    var outcome = t.outcome==='refusal' ? renderRefusal(t.refusal) : renderAnswer(t.answer||{});
+    var calls = (t.tool_invocations||[]).map(renderCall).join('');
+    var outcome = t.outcome==='refusal' ? renderRefusal(t.refusal) : renderAnswer(t);
+    wsSrc.textContent = 'source: ' + (t.source||'synthetic');
     panel.innerHTML = ''
+      + '<div class="viewer">'
       + '<div class="vq"><h3>“'+esc(t.question)+'”</h3><span class="badge '+t.outcome+'">'+t.outcome+'</span></div>'
       + '<div class="vbody">'
-      +   '<div class="step">Tool-call trace — '+t.tool_invocations.length+' call'+(t.tool_invocations.length===1?'':'s')+'</div>'
-      +   '<div class="tl">'+calls+'</div>'
+      +   '<div class="step">Tool-call trace — '+(t.tool_invocations||[]).length+' call'+((t.tool_invocations||[]).length===1?'':'s')+'</div>'
+      +   '<div class="tl">'+(calls||'<div class="cnd">no tool calls recorded for this run</div>')+'</div>'
       +   '<div class="step">Outcome</div>'
       +   outcome
       +   '<div class="meta">'
@@ -321,7 +385,7 @@
       +     '<span>forced final: '+t.forced_final+'</span>'
       +     '<span>source: '+esc(t.source)+'</span>'
       +   '</div>'
-      + '</div>';
+      + '</div></div>';
     panel.querySelectorAll('.expand').forEach(function(el){
       el.addEventListener('click', function(){
         var pre = document.getElementById('raw-'+el.getAttribute('data-i'));
@@ -332,19 +396,139 @@
     });
   }
 
-  function select(idx){
-    Array.prototype.forEach.call(chips.children, function(c,i){c.setAttribute('aria-selected', i===idx);});
-    renderTrace(D.traces[idx]);
+  /* ══════════════════════════════════════════════════════════════════
+     Left-pane chat — sends questions to the live agent (/api/ask) and
+     falls back to the recorded traces when there's no server or no key.
+     ══════════════════════════════════════════════════════════════════ */
+  var activeBubble = null;
+
+  function scrollChat(){ chatlog.scrollTop = chatlog.scrollHeight; }
+
+  function addUser(text){
+    var el = document.createElement('div');
+    el.className='msg user'; el.textContent = text;
+    chatlog.appendChild(el); scrollChat();
+  }
+  function addThinking(){
+    var el = document.createElement('div');
+    el.className='msg bot thinking';
+    el.innerHTML = '<span class="spin"></span> running tools…';
+    chatlog.appendChild(el); scrollChat();
+    return el;
+  }
+  function setActive(el){
+    if(activeBubble) activeBubble.classList.remove('active');
+    activeBubble = el; if(el) el.classList.add('active');
+  }
+  function addBot(text, trace, meta){
+    meta = meta || {};
+    var el = document.createElement('div');
+    el.className='msg bot';
+    var tags = '';
+    if(trace){ tags += '<span class="tag '+trace.outcome+'">'+trace.outcome+'</span>'; }
+    if(meta.live===true) tags += '<span class="tag replay" style="background:rgba(47,189,126,.16);color:#7fd1a6">live</span>';
+    if(meta.live===false) tags += '<span class="tag replay">replay</span>';
+    if(meta.error) tags += '<span class="tag err">error</span>';
+    el.innerHTML = '<div class="btext">'+esc(text)+'</div>'+(tags?'<div class="bmeta">'+tags+'</div>':'');
+    if(trace){
+      el.addEventListener('click', function(){ setActive(el); renderTrace(trace); });
+    } else { el.style.cursor='default'; }
+    chatlog.appendChild(el); scrollChat();
+    if(trace){ setActive(el); renderTrace(trace); }
+    return el;
   }
 
-  D.traces.forEach(function(t,i){
-    var c = document.createElement('button');
-    c.className='chip'; c.setAttribute('role','tab');
-    c.innerHTML = '<span class="dot '+t.outcome+'"></span>'+esc(t.question);
-    c.addEventListener('click', function(){select(i);});
-    chips.appendChild(c);
+  // Client-side replay match — used only when the server itself is unreachable.
+  function matchLocal(question, scenario){
+    var q = (question||'').trim().toLowerCase(), tr = D.traces||[];
+    if(!tr.length) return null;
+    for(var i=0;i<tr.length;i++){ if((tr[i].question||'').trim().toLowerCase()===q) return tr[i]; }
+    for(var j=0;j<tr.length;j++){ var tq=(tr[j].question||'').trim().toLowerCase(); if(q&&(tq.indexOf(q)>=0||q.indexOf(tq)>=0)) return tr[j]; }
+    if(scenario==='overheat'){ for(var k=0;k<tr.length;k++){ if((tr[k].question||'').toLowerCase().indexOf('overheat')>=0) return tr[k]; } }
+    return tr[0];
+  }
+
+  function setBusy(b){ sendBtn.disabled=b; input.disabled=b; }
+
+  function setLive(live){
+    if(live){ liveBadge.textContent='live'; liveBadge.classList.add('on'); }
+    else { liveBadge.textContent='replay'; liveBadge.classList.remove('on'); }
+  }
+
+  async function ask(question){
+    question = (question||'').trim();
+    if(!question || sendBtn.disabled) return;
+    input.value=''; autosize();
+    addUser(question);
+    var ph = addThinking();
+    setBusy(true);
+    var scenario = scenarioSel.value;
+    try{
+      var res = await fetch('/api/ask', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({question:question, scenario:scenario})
+      });
+      var d = await res.json();
+      ph.remove();
+      if(d && d.ok && d.trace){
+        setLive(d.live);
+        var t = d.trace;
+        var summary = t.outcome==='refusal'
+          ? 'Grounded refusal — the connected source can’t answer this.'
+          : ((t.answer && t.answer.summary) || 'Answered.');
+        if(d.note) summary += '\n\n(' + d.note + ')';
+        addBot(summary, t, {live:d.live});
+      } else if(d && d.error){
+        addBot((d.hint || d.error || 'The agent could not answer.'), null, {error:true});
+      } else {
+        addBot('Unexpected response from the agent.', null, {error:true});
+      }
+    }catch(e){
+      // Server unreachable (opened as a file, or not running) → local replay.
+      ph.remove();
+      var local = matchLocal(question, scenario);
+      if(local){
+        setLive(false);
+        addBot(((local.answer && local.answer.summary) || 'Recorded trace.')
+               + '\n\n(offline — no agent server reachable, showing a recorded trace)',
+               local, {live:false});
+      } else {
+        addBot('Could not reach the agent server and found no matching recorded trace.', null, {error:true});
+      }
+    }finally{
+      setBusy(false); input.focus();
+    }
+  }
+
+  /* seed example chips from the recorded traces */
+  function seedExamples(){
+    var ex = document.getElementById('examples');
+    var seen = {}, items = [];
+    (D.traces||[]).forEach(function(t){
+      if(t.question && !seen[t.question]){ seen[t.question]=1; items.push(t); }
+    });
+    items = items.slice(0,6);
+    if(!items.length){ ex.style.display='none'; return; }
+    var html = '<div class="lbl">Try one</div>';
+    html += items.map(function(t){
+      return '<button class="exchip" data-q="'+esc(t.question)+'"><span class="exdot '+t.outcome+'"></span>'+esc(t.question)+'</button>';
+    }).join('');
+    ex.innerHTML = html;
+    ex.querySelectorAll('.exchip').forEach(function(b){
+      b.addEventListener('click', function(){ ask(b.getAttribute('data-q')); });
+    });
+  }
+
+  function autosize(){ input.style.height='auto'; input.style.height=Math.min(input.scrollHeight,120)+'px'; }
+
+  input.addEventListener('input', autosize);
+  input.addEventListener('keydown', function(e){
+    if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); ask(input.value); }
   });
-  if(D.traces.length) select(0);
+  sendBtn.addEventListener('click', function(){ ask(input.value); });
+
+  seedExamples();
+  input.focus();
 })();
 </script>
 </body>
