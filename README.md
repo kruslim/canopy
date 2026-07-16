@@ -194,6 +194,29 @@ uv run python scripts/ask.py "Is the engine overheating?"
 uv run python scripts/ask.py "Did the rear camera activate within 2 seconds?"   # → refusal
 ```
 
+### Web UI — chat with the agent
+
+A two-pane workspace: a **chatbot on the left**, and on the **right** the full tool-call
+trace, the cited answer (or grounded refusal), and an **evidence chart annotated with the
+exact samples the agent cited**. Each question runs the *real* agent; the answer shape is
+identical to the recorded traces, so the same chart pipeline draws both.
+
+```bash
+uv run python scripts/serve.py            # → http://127.0.0.1:8000
+```
+
+- **Live** runs need a provider key in `.env` (copy [`.env.example`](.env.example)); the
+  default provider is Gemini's free tier. Override with `--provider anthropic` or the
+  `CANOPY_PROVIDER` / `CANOPY_MODEL` env vars.
+- **No key? It still works.** `POST /api/ask` degrades to replaying the closest recorded
+  trace, so the whole UI is usable offline — the badge just reads *replay* instead of *live*.
+- The **Simulated scenario** selector (Normal / Overheat) chooses the ground-truth condition
+  a live run reads, so you can reproduce the overheat chart on demand. It maps to
+  `build_reader(scenario=…)` below the seam — the UI never names a data source.
+
+The page is served straight from [`site/`](site/); its `data.js` is regenerated from the
+recorded traces with `uv run python site/build_data.py`.
+
 Phase 4 done-signal — the eval harness. Hard assertions run hermetically in the test suite
 (no key); the live replay and the judge run against a real model; the calibration number is
 reproducible from recorded labels with no key:

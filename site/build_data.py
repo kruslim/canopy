@@ -5,12 +5,19 @@ The site never invents data: it replays `data/evals/traces/*.json` and reports
 (the raw signal series run to hundreds of samples) into a viewer-friendly shape
 while preserving every claim, citation, unit, and refusal exactly as recorded.
 
+For answer traces it also emits a `plot_series` — the same recorded signal,
+decimated to ~130 points so the viewer can draw a cited evidence chart — and
+tags each citation that lands on that signal with a `t` offset (seconds from the
+series start) so the chart can mark the exact samples the answer cited. Both are
+derived straight from the recording; nothing is synthesised for display.
+
 Run from the repo root:  .venv/bin/python site/build_data.py
 """
 
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -20,6 +27,11 @@ OUT = Path(__file__).resolve().parent / "data.js"
 
 # Curated order: lead with the two headline behaviours, then the rest.
 FEATURED = ["cap_001", "cap_005", "cap_004", "cap_000", "cap_006", "cap_007"]
+
+# Points to keep when decimating a series for the chart, and reference lines
+# (a value the chart draws a dashed threshold at) keyed by unit.
+PLOT_POINTS = 130
+UNIT_REFERENCE = {"degC": 105.0}  # coolant overheat threshold
 
 
 def truncate_arrays(obj, keep: int = 2):
@@ -59,6 +71,63 @@ def summarize(name: str, result) -> tuple[str, bool]:
     return "ok", False
 
 
+def _parse(ts: str) -> datetime:
+    return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+
+
+def build_plot_series(raw: dict) -> dict | None:
+    """Decimate the richest recorded series in a trace into a chart-ready shape."""
+    best = None
+    for inv in raw.get("tool_invocations", []):
+        series = (inv.get("result") or {}).get("series")
+        if series and isinstance(series.get("samples"), list):
+            if best is None or len(series["samples"]) > len(best["samples"]):
+                best = series
+    if not best or not best.get("samples"):
+        return None
+
+    samples = best["samples"]
+    t0 = _parse(samples[0]["timestamp"])
+    step = max(1, -(-len(samples) // PLOT_POINTS))  # ceil division
+    kept = []
+    for i in range(0, len(samples), step):
+        p = samples[i]
+        kept.append(
+            {
+                "t": round((_parse(p["timestamp"]) - t0).total_seconds(), 1),
+                "v": p["value"],
+                "q": p.get("quality"),
+            }
+        )
+    last = samples[-1]
+    last_t = round((_parse(last["timestamp"]) - t0).total_seconds(), 1)
+    if kept[-1]["t"] != last_t:
+        kept.append({"t": last_t, "v": last["value"], "q": last.get("quality")})
+
+    plot = {
+        "name": best["name"],
+        "unit": best["unit"],
+        "t0iso": samples[0]["timestamp"],
+        "samples": kept,
+    }
+    if best["unit"] in UNIT_REFERENCE:
+        plot["ref"] = UNIT_REFERENCE[best["unit"]]
+    return plot
+
+
+def tag_citation_offsets(answer: dict, plot: dict) -> dict:
+    """Add a `t` offset to each citation that lands on the plotted signal."""
+    if not answer or not plot:
+        return answer
+    t0 = _parse(plot["t0iso"])
+    answer = json.loads(json.dumps(answer))  # deep copy — don't mutate the source
+    for claim in answer.get("claims", []):
+        for cite in claim.get("citations", []):
+            if cite.get("signal") == plot["name"] and cite.get("timestamp"):
+                cite["t"] = round((_parse(cite["timestamp"]) - t0).total_seconds(), 1)
+    return answer
+
+
 def compact_trace(raw: dict) -> dict:
     invocations = []
     for inv in raw.get("tool_invocations", []):
@@ -72,6 +141,8 @@ def compact_trace(raw: dict) -> dict:
                 "result": truncate_arrays(inv.get("result", {})),
             }
         )
+    plot = build_plot_series(raw) if raw.get("outcome") == "answer" else None
+    answer = tag_citation_offsets(raw.get("answer"), plot) if plot else raw.get("answer")
     return {
         "trace_id": raw["trace_id"],
         "question": raw["question"],
@@ -83,8 +154,9 @@ def compact_trace(raw: dict) -> dict:
         "signals_touched": raw.get("signals_touched", []),
         "signals_available": raw.get("signals_available"),
         "tool_invocations": invocations,
-        "answer": raw.get("answer"),
+        "answer": answer,
         "refusal": raw.get("refusal"),
+        "plot_series": plot,
     }
 
 
